@@ -1,0 +1,10 @@
+
+
+# Bibliography
+Bibliography/*.pdf
+Bibliography/*.djvu
+Bibliography/Books/*.pdf
+Bibliography/Books/*.djvu
+Bibliography/*.zip
+Bibliography/*.tar.gz
+

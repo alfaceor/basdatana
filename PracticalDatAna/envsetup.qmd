@@ -1,0 +1,23 @@
+
+## Environment Set Up
+
+The first important thing to take into account to get reproducibility is to have a clean workout is set up the virtual environment.
+
+In python I use conda and for R I will use renv 
+
+here::here for file paths and pathlib for python
+
+
+
+# Export the entire environment state to environment.yml
+conda env export --no-builds > environment.yml
+
+# If using micromamba:
+micromamba env export --no-builds > environment.yml
+
+
+# To lock a specific environment
+micromamba env export --explicit > conda-lock.yml
+
+
+
