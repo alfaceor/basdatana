@@ -2,9 +2,14 @@
 
 # Bibliography
 Bibliography/*.pdf
+Bibliography/*.epub
 Bibliography/*.djvu
+Bibliography/Papers
+Bibliography/Papers/*.pdf
+Bibliography/Books
 Bibliography/Books/*.pdf
 Bibliography/Books/*.djvu
+Bibliography/Books/*.epub
 Bibliography/*.zip
 Bibliography/*.tar.gz
 

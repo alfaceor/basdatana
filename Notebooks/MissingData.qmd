@@ -1,0 +1,137 @@
+# Simple Data Analysis
+
+```{r}
+# install.packages("plotly")
+# install.packages("rmarkdown")
+# install.packages("DT")
+# install.packages("gt")
+# install.packages("gtsummary")
+# install.packages("GGally") # R >=4.3 required (NOT INSTALLED)
+# install.packages("mice")
+# install.packages("skimr")
+```
+
+```{r}
+library(tidyverse)
+library(gtsummary)
+library(mice)
+library(skimr)
+# library(GGally)
+```
+
+
+```{r}
+theme_ceor <-theme_bw() +
+  # theme(legend.position = "none")+
+  theme(
+    plot.title = element_text(size = 24,hjust=-0.03),
+    axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text=element_text(size=16),
+    axis.title=element_text(size=18),
+    axis.line.x = element_line(size = 0.5, linetype = "solid", colour = "black"),
+    axis.line.y = element_line(size = 0.5, linetype = "solid", colour = "black")
+  )
+
+```
+
+Here we show a simple data analysis of the airquality data that is shipped with R.
+
+I do not know what is the content of the specifications on the data
+
+
+
+```{r}
+df_airquality <- airquality %>% 
+tibble()
+df_airquality
+```
+
+
+```{r}
+glimpse(df_airquality)
+```
+
+```{r}
+head(df_airquality)
+```
+
+
+```{r}
+skim(df_airquality)
+```
+
+```{r}
+df_airquality %>% 
+DT::datatable(filter="top")
+```
+
+```{r}
+summary(airquality)
+```
+
+
+
+```{r}
+model1  <- lm(Ozone ~ Solar.R + Wind, data=airquality)
+model1 %>% tbl_regression()
+```
+
+
+```{r}
+ic(airquality) %>% head(5)
+```
+
+```{r}
+pred <- predict(model1, newdata=ic(df_airquality) %>% head(5))
+pred
+```
+
+
+```{r}
+df_trial <- gtsummary::trial
+df_trial %>% gtsummary::tbl_summary()
+```
+
+```{r}
+summary(df_trial)
+```
+
+```{r}
+df_trial
+```
+
+```{r}
+# df_airquality %>% #select(disp,hp,drat) %>% 
+#   gather(k,v) %>% group_by(k) %>% 
+#   summarise(min=min(v),median=median(v),mean=mean(v),max=max(v),n=n())
+
+```
+
+```{r}
+plt_tmp <- airquality %>%
+dplyr::select(Temp) %>% 
+ggplot() +
+geom_histogram(aes(x=Temp)) +
+theme_ceor
+
+plotly::ggplotly(plt_tmp)
+```
+
+
+
+
+```{r}
+plt_tmp <- airquality %>% 
+ggplot() +
+geom_point(aes(x=Solar.R, y=Ozone, color=Wind)) +
+labs(x="Solar.R", y="Ozone")+
+theme_ceor
+
+plotly::ggplotly(plt_tmp)
+```
+
+ 
