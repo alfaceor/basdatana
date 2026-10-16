@@ -1,26 +1,30 @@
-# Simple Data Analysis
+---
+title: Basic Data Analysis in R
+author: Carlos Olivares
+bibliography: ../Bibliography/basdatana_refs.bib
+format:
+  html:
+    code-fold: true
+    theme: darkly
+---
+
 
 ```{r}
-# install.packages("plotly")
-# install.packages("rmarkdown")
-# install.packages("DT")
-# install.packages("gt")
-# install.packages("gtsummary")
-# install.packages("GGally") # R >=4.3 required (NOT INSTALLED)
-# install.packages("mice")
-# install.packages("skimr")
-```
+#| warning: false
+#| message: false
 
-```{r}
 library(tidyverse)
 library(gtsummary)
 library(mice)
 library(skimr)
-# library(GGally)
+library(ggplot2)
 ```
 
 
 ```{r}
+#| warning: false
+#| message: false
+
 theme_ceor <-theme_bw() +
   # theme(legend.position = "none")+
   theme(
@@ -38,46 +42,66 @@ theme_ceor <-theme_bw() +
 
 ```
 
-Here we show a simple data analysis of the airquality data that is shipped with R.
 
-I do not know what is the content of the specifications on the data
+The simple or easy way to deal with incomplete data is just remove it. However, this could let to the reduction of a big portition of the data and when the data is difficult to obtain or the fact that are missing could shown a hidden pattern. For those reasons we need to extract the best with the data we have.
+
+The objective of this notebook is to implement the examples in the book @b_2012_vanBuuren_FlexibleImputationOfMissingData_Chapman.
+
+There are different types of missing data and here is a nomenclature of the types of missing data we can encounter:
+
+* **MCAR** : Missing Completely At Random.
+* **MAR** : Missing At Random.
+* **MNAR** : Missing Not At Random.
 
 
+
+## Simple Data Analysis
+
+Following the book @b_2012_vanBuuren_FlexibleImputationOfMissingData_Chapman we use a dataset shipped by default with R `airquality`.
+
+I particularly prefer to use tibbles instead of a classic data.frame in R
 
 ```{r}
-df_airquality <- airquality %>% 
-tibble()
-df_airquality
+df_airquality <- airquality %>% tibble()
 ```
 
+
+and a simple inspection of the data can be done with the glimpse command and
 
 ```{r}
 glimpse(df_airquality)
 ```
 
-```{r}
-head(df_airquality)
-```
-
+However, we could use the DT package to present all (or part) of the data in interactive datatable 
 
 ```{r}
-skim(df_airquality)
+DT::datatable(df_airquality, filter="top")
 ```
 
-```{r}
-df_airquality %>% 
-DT::datatable(filter="top")
-```
+To get what is distribution and order or magnitude of quantities in the table we can get a summary of the data 
+
 
 ```{r}
 summary(airquality)
 ```
 
 
+Notice that there are a couple of columns in `airquality` dataset (Ozone and Solar.R) that have with NA values. More especifically Ozone has 37 NA and Solar.R 7 and we can get a better representation of this summary usig gtsummary package @tbl-airquality-summary:
+
+```{r}
+#| label: tbl-airquality-summary
+#| tbl-cap: Table for automatic reports using gtsummary tbl_summary
+
+gtsummary::tbl_summary(df_airquality)
+```
+
+
+### Simple linear regression
+
 
 ```{r}
 model1  <- lm(Ozone ~ Solar.R + Wind, data=airquality)
-model1 %>% tbl_regression()
+model1 %>% gtsummary::tbl_regression()
 ```
 
 
