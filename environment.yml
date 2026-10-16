@@ -8,6 +8,7 @@ channels:
 dependencies:
   - python=3.12
   - r-base=4.5
+  - r-renv
   # R packages
   - r-tidyverse
   - r-gtsummary
