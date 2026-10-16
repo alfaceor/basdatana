@@ -7,4 +7,9 @@ channels:
 
 dependencies:
   - python=3.12
-  - r-base=4.3
+  - r-base=4.5
+  # R packages
+  - r-tidyverse
+  - r-gtsummary
+  - r-mice
+  - r-skimr
