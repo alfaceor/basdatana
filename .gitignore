@@ -13,3 +13,4 @@ Bibliography/Books/*.epub
 Bibliography/*.zip
 Bibliography/*.tar.gz
 
+.Rproj.user
