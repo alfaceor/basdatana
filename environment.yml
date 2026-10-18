@@ -14,3 +14,6 @@ dependencies:
   - r-gtsummary
   - r-mice
   - r-skimr
+  - r-DT
+  - r-plotly
+  - r-ggally
