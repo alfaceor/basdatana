@@ -1,0 +1,1120 @@
+---
+title: "Simulations"
+author: "Carlos Olivares"
+output: 
+  html_document:
+    code_folding: hide
+    toc: TRUE
+    number_sections: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE, cache=TRUE, collapse = TRUE)
+```
+
+
+
+```{r}
+source("../Anoruti_commons.R", local = knitr::knit_global())
+```
+
+# Description
+
+A Simulation of 1000 considering an inoculum of 10^8 CFU with variability on $\delta_{U}$ is analyzed is this document.
+
+
+# Models
+
+
+
+```{r}
+# dat <- data.frame(
+#   col = "Google it",
+#   href = "https://www.google.fr/search?source=hp&q=flextable+R+package",
+#   stringsAsFactors = FALSE
+# )
+# 
+# ftab <- flextable::flextable(dat)
+# # ftab <- flextable::compose(
+# #   x = ftab, j = "col",
+# #   value = flextable::as_paragraph(
+# #     "This is a link: ",
+# #     flextable::hyperlink_text(x = col, url = href)
+# #   )
+# # )
+# ftab
+
+```
+
+
+## R_V_U_NoD_NOSS
+
+\begin{align}
+  \frac{d}{dt} R & = \delta_{R}R - q_{R, V} R + q_{V, R} V \\
+  \frac{d}{dt} V & = \delta_{V}V - q_{V, R} V + q_{R, V} R - q_{V, U} V + q_{U, V} U \\
+  \frac{d}{dt} U & = \delta_{U}U - q_{U, V} U + q_{V, U} V 
+\end{align}
+
+
+TODO:
+ deltaU + qVU
+ individual parameter to check the negative values
+ possible restrict to negative
+
+<!-- ## R_V_U_isol_NOSS -->
+<!-- \begin{align} -->
+<!--   \frac{d}{dt} R & = \delta_{R}R - q_{R, V} R + q_{V, R} V \\ -->
+<!--   \frac{d}{dt} V & = \delta_{V}V + q_{R, V} R - q_{V, R} V \\ -->
+<!--   \frac{d}{dt} U & = \delta_{U}U -->
+<!-- \end{align} -->
+
+<!-- ## Add variability depending on each case -->
+
+
+<!-- \begin{align} -->
+<!--   \frac{d}{dt} V & = \delta_{V}V - q_{V, D} V + q_{D, V} D \\ -->
+<!--   \frac{d}{dt} D & =               q_{V, D} V - q_{D, V} D  -->
+<!-- \end{align} -->
+
+<!-- # Pre-processing data -->
+
+```{r}
+# df_V_ADM_V_TMP <- read.csv("V_ADM_V/data_4_monolix/df_4_mnlx_Ct_PAS_R_V_U_w_adm.csv", na.strings = ".")
+# df_V_ADM_V_TMP %>%
+#   dplyr::filter(OBSID_organ %in% c("R" ,"V", NA)) %>%
+#   write.csv("V_ADM_V/data_4_monolix/df_4_mnlx_Ct_PAS_R_V_w_adm.csv", na = ".")
+```
+
+
+
+<!-- ```{r} -->
+<!-- get_sml_simulated_data <- function(sml_dir_ii){ -->
+<!--   fln_sml_data <- sprintf("%s/Simulation/simulatedData.txt", sml_dir_ii) -->
+<!--   tbl_sml_ii <- read.csv(fln_sml_data, na.strings = ".") %>% tibble() -->
+<!--   return(tbl_sml_ii) -->
+<!-- } -->
+
+<!-- get_sml_individual_parameters <- function(sml_dir_ii){ -->
+<!--   fln_sml_data <- sprintf("%s/Simulation/individualParameters.txt", sml_dir_ii) -->
+<!--   tbl_sml_ii <- read.csv(fln_sml_data, na.strings = ".") %>% tibble() -->
+<!--   return(tbl_sml_ii) -->
+<!-- } -->
+
+
+
+
+
+<!-- ``` -->
+
+
+
+
+
+```{r}
+
+path_mdls_2_compare <- c(
+  "ms_Simulations/mdl_AB_Ct_strain_PAS_VAR_deltaU_qVU"
+  ) 
+
+str_mdls_nickname <- c(
+  "Final.Ct_PAS"
+)
+```
+
+
+
+
+```{r}
+
+df_mdls_2_compare <- data.frame(mdl_nickname=str_mdls_nickname, mdl_dir=path_mdls_2_compare) %>% 
+  dplyr::mutate(sml_dir=str_replace(mdl_dir, "mdl_", "sml_pop_"))
+df_mdls_2_compare %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra()
+```
+
+
+
+```{r}
+ii <- 1
+df_mdls_parameters_2_compare <- lapply(
+  seq_along(path_mdls_2_compare),
+  function(ii) get_onecol_tbl(path_mdls_2_compare[ii], mdl_nickname = str_mdls_nickname[ii])
+) %>% 
+  purrr::reduce(full_join, by=c("parameter")) 
+
+```
+
+## Parameters Comparisons {.tabset}
+
+
+### BICc order
+```{r}
+# v_models_BICc_order <- 
+df_BICc_model_comparisons <- get_df_params_pop_omega(df_mdls_parameters_2_compare, param_type = "fit") %>% 
+  dplyr::filter(parameter == "BICc") %>% 
+  dplyr::select(-parameter, -param_type) %>% 
+  pivot_longer(cols = everything(), names_to = "model", values_to = "BICc" ) %>% 
+  dplyr::arrange(BICc) 
+
+v_models_BICc_levels <- df_BICc_model_comparisons %>% pull(model)
+
+df_BICc_model_comparisons %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra()
+```
+
+
+### Fiting criteria
+```{r}
+get_df_params_pop_omega(df_mdls_parameters_2_compare, param_type = "fit") %>% 
+  dplyr::mutate(param_type = "") %>%
+  dplyr::select(parameter, param_type, everything()) %>% 
+  dplyr::select(-param_type) %>% 
+  dplyr::mutate( across(everything(), ~f_replace_to_fix(.x) ) ) %>% 
+  dplyr::mutate_all(~replace_na(., "")) %>% 
+  get_flx_tbl_monolix()
+  
+```
+
+
+
+### Population parameters
+```{r}
+get_df_params_pop_omega(df_mdls_parameters_2_compare, param_type = "pop") %>% 
+  # dplyr::mutate(param_type = "") %>% 
+  dplyr::select(parameter, param_type, everything()) %>% 
+  dplyr::mutate( across(everything(), ~f_replace_to_fix(.x) ) ) %>% 
+  dplyr::mutate_all(~replace_na(., "")) %>% 
+  get_flx_tbl_monolix()
+  
+```
+
+
+### Omega parameters
+```{r}
+get_df_params_pop_omega(df_mdls_parameters_2_compare, param_type = "omega") %>% 
+  # dplyr::mutate(param_type = "") %>% 
+  dplyr::select(parameter, param_type, everything()) %>% 
+  dplyr::mutate( across(everything(), ~f_replace_to_fix(.x) ) ) %>% 
+  dplyr::select_if(~ !all(is.na(.))) %>% 
+  dplyr::mutate_all(~replace_na(., "")) %>% 
+  get_flx_tbl_monolix()
+  
+```
+
+
+
+
+
+```{r}
+ii <- 1
+df_sml_indvidual_parameters <- get_sml_individual_parameters(df_mdls_2_compare$sml_dir[ii]) 
+
+df_sml_indvidual_parameters_Stats <- df_sml_indvidual_parameters %>% 
+  dplyr::select(-group, -VolU) %>% 
+  pivot_longer(cols = -id,names_to = "parameter", values_to = "value" ) %>% 
+  dplyr::filter(parameter %in% c("deltaU", "qVU")) %>% 
+  group_by(parameter) %>% 
+  nest() %>% 
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$value, na.rm = TRUE) )
+  ) %>% 
+  unnest(Stats) %>% 
+  dplyr::select(-data) %>% 
+  dplyr::mutate(model=NA)
+
+df_sml_indvidual_parameters_Stats
+```
+
+
+```{r}
+v_IDs_2_exclude <- df_sml_indvidual_parameters %>% 
+  dplyr::filter(deltaU < -15.12123 | deltaU > -4.262853 | qVU < 40.05858	| qVU > 87.740004 ) %>% 
+  pull(id) %>% 
+  unique()
+```
+
+
+
+
+```{r}
+# get_sml_simulated_data(df_mdls_2_compare$sml_dir[1])
+# log10CFUV
+# ii <- 2
+df_sim_pop_mdls_2_compare <- lapply(
+  seq_along(df_mdls_2_compare$sml_dir), 
+  function (ii)
+  if ( "log10CFUV" %in% colnames( get_sml_simulated_data(df_mdls_2_compare$sml_dir[ii]) ) ){
+      get_sml_simulated_data(df_mdls_2_compare$sml_dir[ii]) %>% 
+        dplyr::rename("obs"="log10CFUV") %>% 
+        dplyr::mutate(obsid=ifelse(is.na(obs), NA, "log10CFUV")) %>% 
+        dplyr::filter(!is.na(obsid)) %>% 
+        # dplyr::filter(group == "simulationGroup1") %>% 
+        dplyr::mutate(model=df_mdls_2_compare$mdl_nickname[ii] )
+    }else{
+      get_sml_simulated_data(df_mdls_2_compare$sml_dir[ii]) %>% 
+        dplyr::filter(!is.na(obsid)) %>% 
+        # dplyr::filter(group == "simulationGroup1") %>% 
+        dplyr::mutate(model=df_mdls_2_compare$mdl_nickname[ii] )
+    }
+  
+  ) %>% 
+  dplyr::bind_rows()
+
+# df_pop_mdls_2_compare
+```
+
+##{-}
+
+## Simulation Plots
+
+### Population
+
+
+
+```{r}
+df_sim_pop_mdls_2_compare %>% head()
+```
+
+
+
+```{r, fig.width=15, fig.height=6}
+
+# CFUU = U/VolU
+
+
+
+
+  # purrr::reduce(full_join, by=c("parameter"))
+```
+
+
+
+
+
+
+
+
+
+```{r, fig.width=20, fig.height=6}
+dir_mlx_ii <- df_mdls_2_compare$mdl_dir[1]
+
+df_yR <- get_observations(dir_mlx_ii, "yR") %>%
+  dplyr::rename("TIME"="time") %>%
+  dplyr::rename("obs"="observation") %>%
+  dplyr::mutate(obsid="log10CFUR")
+
+df_yV <- get_observations(dir_mlx_ii, "yV") %>%
+  dplyr::rename("TIME"="time") %>% 
+  dplyr::rename("obs"="observation") %>% 
+  dplyr::mutate(obsid="log10CFUV") 
+
+df_yU <- get_observations(dir_mlx_ii, "yU") %>%
+  dplyr::rename("TIME"="time") %>%
+  dplyr::rename("obs"="observation") %>%
+  dplyr::mutate(obsid="log10CFUU")
+
+df_obs <- bind_rows(
+  list(df_yR, df_yV, df_yU)
+  ) %>% 
+  dplyr::mutate(group="data") %>% 
+  dplyr::mutate(model=NA)
+
+
+df_obs_Stats <- df_obs %>% group_by(TIME, variable, obsid) %>% 
+  nest() %>% 
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$obs, na.rm = TRUE) )
+  ) %>% 
+  unnest(Stats) %>% 
+  dplyr::select(-data) %>% 
+  dplyr::mutate(model=NA)
+  
+```
+
+
+
+
+
+```{r}
+df_sim_pop_mdls_2_compare %>% pull(model) %>% unique() %>% paste0(collapse = "', '")
+df_sim_pop_mdls_2_compare %>% pull(obsid) %>% unique() %>% paste0(collapse = "', '")
+# v_tmp_levels <- c('Ct_PAS.VAR_ALL', 'Ct_PAS.VAR_None', 'VAR_deltaU.base', 'VAR_deltaU.deltaR', 'VAR_deltaU.deltaV', 'VAR_deltaU.qRV', 'VAR_deltaU.qUV', 'VAR_deltaU.qVR', 'VAR_deltaU.qVU')
+# v_tmp_colors <- RColorBrewer::brewer.pal(length(v_tmp_levels), name = "Set1")
+# nv_tmp_levels_colors <- v_tmp_colors
+# names(nv_tmp_levels_colors) <- v_tmp_levels
+v_CFU_levels <- c("log10CFUR", "log10CFUV", "log10CFUU")
+nv_CFU_labels <- c("log10CFUR" = "Kidney", "log10CFUV" = "Bladder", "log10CFUU" = "Urine")
+
+```
+
+
+```{r, fig.width=16, fig.height=6}
+
+lbl_y <- ""
+lbl_x <- "time (days)"
+lbl_subtitle <- "Simulated Mice"
+# df_sim_pop_mdls_2_compare %>% pull(ID) %>% unique()
+
+df_sim_pop_mdls_2_compare %>% 
+  dplyr::filter(!ID %in% v_IDs_2_exclude) %>% 
+  ggplot(aes(x=TIME, y=obs, color=model, group=ID)) +
+  geom_line(size=0.5, alpha=0.5) +
+  # geom_point(data=df_obs, color="black") +
+  # geom_line(data=df_obs_Stats, aes(y=q50), color="black", inherit.aes = FALSE) +
+  facet_wrap(~factor(obsid, v_CFU_levels), labeller = as_labeller(nv_CFU_labels)) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  # scale_color_manual(values = nv_tmp_levels_colors) +
+  # facet_wrap(~obsid) +
+  # labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  scale_color_brewer(type = "qual", palette = 3) +
+  geom_vline(xintercept = 0, color="red", linetype="dotted") +
+  geom_hline(yintercept = 1, linetype="dotted") +
+  coord_cartesian(
+    ylim = c(-1, 9)
+  ) +
+  # scale_x_log10() +
+  theme_ano +
+  theme(strip.background = element_rect(fill = "black", color = "white" )) +
+  theme(strip.text = element_text(colour = 'white', face="bold", size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) ) +
+  theme(legend.position = "none")
+
+```
+
+
+
+```{r}
+ii <- 1
+```
+
+
+```{r}
+lbl_x <- latex2exp::TeX("$\\delta_{U}$")
+lbl_y <- ""
+get_sml_individual_parameters(df_mdls_2_compare$sml_dir[ii]) %>% 
+  ggplot(aes(x=deltaU)) +
+  geom_histogram() +
+  # geom_function(fun=function (x) dnorm(x, mean = -9.8, sd=3.4)) +
+  geom_vline(xintercept = 0, linetype="dotted") +
+  labs(x=lbl_x, y=lbl_y) +
+  theme_ano
+```
+
+
+```{r}
+# scale_color_brewer(type = "qual", palette = 3) 
+```
+
+
+
+```{r}
+lbl_x <- latex2exp::TeX("$q_{BU}$")
+lbl_y <- ""
+get_sml_individual_parameters(df_mdls_2_compare$sml_dir[ii]) %>% 
+  ggplot(aes(x=qVU)) +
+  labs(x=lbl_x, y=lbl_y) +
+  theme_ano
+```
+
+
+
+
+```{r}
+lbl_x <- latex2exp::TeX("$\\delta_{U}$")
+lbl_y <- ""
+v_color_tmp <- "#a6cee3"
+get_sml_individual_parameters(df_mdls_2_compare$sml_dir[ii]) %>% 
+  ggplot(aes(x=deltaU)) +
+  geom_histogram(aes(y=..density..), color=v_color_tmp, fill=v_color_tmp) +
+  geom_function(fun=function (x) dnorm(x, mean = -9.8, sd=3.4)) +
+  # geom_vline(xintercept = 0, linetype="dotted") +
+  labs(x=lbl_x, y=lbl_y) +
+  theme_ano
+```
+
+
+
+
+```{r}
+lbl_x <- latex2exp::TeX("$q_{BU}$")
+lbl_y <- ""
+get_sml_individual_parameters(df_mdls_2_compare$sml_dir[ii]) %>% 
+  ggplot(aes(x=qVU)) +
+  geom_histogram(aes(y=..density..), color=v_color_tmp, fill=v_color_tmp) +
+  # geom_histogram() +
+  geom_function(fun=function (x) dlnorm(x, meanlog = log(59), sdlog=0.23 )) +
+  labs(x=lbl_x, y=lbl_y) +
+  theme_ano
+```
+
+
+### Time to LOD
+
+```{r}
+df_sim_pop_mdls_2_compare
+```
+
+
+
+```{r}
+# df_sim_pop_mdls_2_compare %>% 
+#   group_by()
+```
+
+
+
+```{r}
+# df_indiv_mdls_2_compare
+df_frac_LOD <- df_sim_pop_mdls_2_compare %>% 
+  dplyr::filter(TIME > 0) %>% 
+  # dplyr::filter(TIME %% 2 == 0, TIME > 0) %>% 
+  dplyr::mutate(below_LOD = ifelse(obs<1, 1 , 0)) %>% 
+  group_by(TIME, obsid) %>% 
+  summarize(
+    frac_below_LOD = sum(below_LOD)/n()
+  ) %>% 
+  ungroup()
+
+fraction_threshold <- 0.8
+df_ttt <- df_frac_LOD %>% 
+  dplyr::filter(frac_below_LOD >= fraction_threshold) %>% 
+  group_by(obsid) %>% 
+  summarise(time_2_LOD_80p = min(TIME)) %>% 
+  ungroup() %>% 
+  dplyr::arrange(time_2_LOD_80p)
+df_ttt %>% knitr::kable()
+```
+
+
+
+```{r}
+# df_pop_mdls_2_compare %>% pull(model) %>% unique() %>% paste0(collapse = "', '")
+# df_pop_mdls_2_compare %>% pull(obsid) %>% unique() %>% paste0(collapse = "', '")
+# v_tmp_levels <- c('Ct_PAS.VAR_ALL', 'Ct_PAS.VAR_None', 'VAR_deltaU.base', 'VAR_deltaU.deltaR', 'VAR_deltaU.deltaV', 'VAR_deltaU.qRV', 'VAR_deltaU.qUV', 'VAR_deltaU.qVR', 'VAR_deltaU.qVU')
+# v_tmp_colors <- RColorBrewer::brewer.pal(length(v_tmp_levels), name = "Set1")
+# nv_tmp_levels_colors <- v_tmp_colors
+# names(nv_tmp_levels_colors) <- v_tmp_levels
+v_CFU_levels <- c("log10CFUR", "log10CFUV", "log10CFUU")
+nv_CFU_labels <- c("log10CFUR" = "Kidney", "log10CFUV" = "Bladder", "log10CFUU" = "Urine")
+# nv_CFU_labels <- c("log10CFUR" = "K", "log10CFUV" = "B", "U" = "Urine")
+nv_CFU_colors <- c("log10CFUR" = "#d73027", "log10CFUV" = "#4575b4", "log10CFUU" = "#feb24c" )
+
+# nv_organ_colors
+```
+
+
+```{r, fig.width=14, fig.height=5}
+
+lbl_x <- "time (days)"
+lbl_y <- "Fraction of Cleared"
+df_frac_LOD %>% 
+  ggplot(aes(x=TIME, y=frac_below_LOD)) +
+  geom_line() +
+  geom_hline(yintercept = fraction_threshold, linetype = "dashed") +
+  labs(x=lbl_x, y=lbl_y) +
+  facet_wrap(~obsid, labeller = as_labeller(nv_CFU_labels)) +
+  theme_ano +
+  theme(strip.background = element_rect(fill = "black", color = "white" )) +
+  theme(strip.text = element_text(colour = 'white', face="bold", size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+
+```
+
+
+
+
+
+```{r, fig.width=5, fig.height=3}
+
+lbl_x <- "time (days)"
+lbl_y <- "Cleared fraction"
+lbl_color <- "Organ"
+plt <- df_frac_LOD %>% 
+  dplyr::mutate(dummy="") %>% 
+  ggplot(aes(x=TIME, y=frac_below_LOD, color=obsid)) +
+  geom_line(size=1) +
+  geom_hline(yintercept = fraction_threshold, linetype = "dashed") +
+  scale_color_manual(values = nv_CFU_colors, labels=nv_CFU_labels) +
+  geom_vline(data = df_ttt, aes(xintercept = time_2_LOD_80p, color=obsid), inherit.aes = FALSE, linetype="dashed") +
+  labs(x=lbl_x, y=lbl_y, color=lbl_color) +
+  coord_cartesian(
+    xlim = c(20,70)
+  ) +
+  scale_y_continuous(n.breaks = 6) +
+  facet_wrap(~dummy) +
+  # facet_wrap(~obsid, labeller = as_labeller(nv_CFU_labels)) +
+  theme_ano +
+  theme(legend.position = c(0.82, 0.4)) +
+  theme(strip.background = element_rect(fill = "white", color = "white" )) +
+  theme(strip.text = element_text(colour = 'black', face="bold", size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+
+plt_cleared_fraction <- plt
+print(plt)
+ggsave("plt_final_model_Ct_PAS_Clearence_Simul.pdf", plot=plt)
+
+```
+
+
+```{r}
+# library("tidyverse")
+# install.packages("pdftools")
+
+
+```
+
+
+
+
+```{r}
+plt_merged_indivplots_simul <- cowplot::plot_grid(
+  plt_individualfits,
+  plt_cleared_fraction  ,
+  ncol = 2,
+  align = "vh",
+  axis = 'l',
+  labels = c("b)",  "c)"),
+  rel_widths = c(2.6, 1.0)#,
+  # rel_heights = c(1, 1.25)
+)
+plt_merged_indivplots_simul
+```
+
+
+```{r}
+fln_image_png <- "images/draw_Anoruti_Compartments_oneline.png"
+fln_image_svg <- "images/draw_Anoruti_Compartments_oneline.svg"
+fln_image_pdf <- "images/draw_Anoruti_Compartments_oneline.pdf"
+# library("magick")
+# library("pdftools")
+# cowplot::ggdraw() + cowplot::draw_image( magick::image_read_pdf(fln_image_pdf) )
+plt_schema_panel <- cowplot::ggdraw() + cowplot::draw_image(magick::image_read_svg(fln_image_svg), scale = 1)
+plt_schema_panel <- cowplot::ggdraw() + cowplot::draw_image(fln_image_png, scale = 0.8)
+plt_schema_panel
+```
+```{r}
+
+
+plt_merged_indivplots_simul_03 <- cowplot::plot_grid(
+  plt_schema_panel,
+  plt_merged_indivplots_simul,
+  ncol = 1,
+  align = "vh",
+  axis = 'l',
+  labels = c("a)",  ""),
+  # rel_widths = c(2.6, 1.0)#,
+  rel_heights = c(1, 1)
+)
+plt_merged_indivplots_simul_03
+
+```
+
+
+```{r}
+ggsave("plt_merged_indivplots_simul_03.pdf", plot=plt_merged_indivplots_simul_03, width = 12, height = 6)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- ```{r} -->
+<!-- # CFUU = U/VolU -->
+<!-- # log10(CFUU) = log(U) - log10(VolU) -->
+
+
+<!-- lbl_y <- "" -->
+<!-- lbl_x <- "time (days)" -->
+<!-- lbl_subtitle <- "Model Comparison Population Parameters" -->
+<!-- df_sim_pop_mdls_2_compare %>%  -->
+<!--   ggplot(aes(x=TIME, y=obs, color=obsid, group=ID)) + -->
+<!--   geom_line(size=1) + -->
+<!--   # geom_point(data=df_obs, color="black") + -->
+<!--   # geom_line(data=df_obs_Stats, aes(y=q50), color="black") + -->
+<!--   facet_wrap(~obsid) + -->
+<!--   labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) + -->
+<!--   scale_color_brewer(type = "qual", palette = 3) + -->
+<!--   geom_vline(xintercept = 0, color="red", linetype="dotted") + -->
+<!--   geom_hline(yintercept = 1, linetype="dotted") + -->
+<!--   # coord_cartesian( -->
+<!--   #   xlim = c(0, 10) -->
+<!--   # ) + -->
+<!--   # scale_x_log10() + -->
+<!--   theme_ano + -->
+<!--   theme(strip.background = element_rect(fill = "black", color = "white" )) + -->
+<!--   theme(strip.text = element_text(colour = 'white', face="bold", size = 15)) + -->
+<!--   theme(panel.border = element_rect(colour = "black", fill = NA) ) -->
+
+<!-- ``` -->
+
+
+<!-- ### Individual Fits {.tabset} -->
+
+
+
+<!-- ```{r, fig.width=15, fig.height=6} -->
+
+<!-- # CFUU = U/VolU -->
+
+
+<!-- # dplyr::rename("obs"="log10CFUV") %>%  -->
+<!-- #     dplyr::mutate(obsid=ifelse(is.na(obs), NA, "log10CFUV")) %>%  -->
+<!-- #     dplyr::filter(!is.na(obsid)) %>%  -->
+
+<!-- df_indiv_mdls_2_compare <- lapply( -->
+<!--   seq_along(df_mdls_2_compare$sml_dir),  -->
+<!--   function (ii) -->
+<!--     if ( "log10CFUV" %in% colnames( get_sml_simulated_data(df_mdls_2_compare$sml_dir[ii]) ) ){ -->
+<!--       get_sml_simulated_data(df_mdls_2_compare$sml_dir[ii]) %>%  -->
+<!--         dplyr::rename("obs"="log10CFUV") %>%  -->
+<!--         dplyr::mutate(obsid=ifelse(is.na(obs), NA, "log10CFUV")) %>%  -->
+<!--         dplyr::filter(!is.na(obsid)) %>%  -->
+<!--         # dplyr::filter(group == "simulationGroup2") %>%  -->
+<!--         dplyr::mutate(model=df_mdls_2_compare$mdl_nickname[ii] ) -->
+<!--     }else{ -->
+<!--       get_sml_simulated_data(df_mdls_2_compare$sml_dir[ii]) %>%  -->
+<!--         dplyr::filter(!is.na(obsid)) %>%  -->
+<!--         # dplyr::filter(group == "simulationGroup2") %>%  -->
+<!--         dplyr::mutate(model=df_mdls_2_compare$mdl_nickname[ii] ) -->
+<!--     } -->
+<!--   ) %>%  -->
+<!--   dplyr::bind_rows() -->
+<!--   # purrr::reduce(full_join, by=c("parameter")) -->
+<!-- ``` -->
+
+
+
+
+
+
+<!-- ```{r} -->
+<!-- # df_simul_stats %>%  -->
+<!-- #   pivot_wider( -->
+<!-- #     id_cols = ID, -->
+<!-- #     names_from = obsid, -->
+<!-- #     values_from = time_2_LOD -->
+<!-- #   ) -->
+<!-- #    -->
+<!-- #   # dplyr::summarise(whi) -->
+<!-- ``` -->
+
+
+
+<!-- ```{r} -->
+<!-- # v_mdl_nicks <- df_indiv_mdls_2_compare %>% pull(model) %>% unique() -->
+<!-- v_mdl_nicks <- v_models_BICc_levels -->
+<!-- ``` -->
+
+
+<!-- ```{r, results='asis', fig.width = 15, fig.height = 6} -->
+
+
+<!-- lbl_y <- "" -->
+<!-- lbl_x <- "time (days)" -->
+<!-- y_lims <- c(0, 10) -->
+<!-- x_lims <- c(0, 30) -->
+
+<!-- str_pop_color <- "#4d004b" -->
+<!-- for (i in seq(1, length(v_mdl_nicks) ) ){ -->
+<!--   str_tmp_model_nick <- v_mdl_nicks[i] -->
+<!--   cat("\n") -->
+<!--   cat("\n") -->
+<!--   cat("#### ", str_tmp_model_nick, "\n") -->
+
+<!--   lbl_subtitle <- sprintf("Model %s Individual Fits", str_tmp_model_nick) -->
+
+<!--   plt <- df_indiv_mdls_2_compare %>%  -->
+<!--     dplyr::filter(model == str_tmp_model_nick) %>%  -->
+<!--     ggplot(aes(x=TIME, y=obs, color=model)) + -->
+<!--     geom_line(aes(group=interaction(ID, model)), size=0.5, alpha=0.5) + -->
+<!--     geom_line( -->
+<!--       data=df_pop_mdls_2_compare %>% dplyr::filter(model == str_tmp_model_nick),  -->
+<!--       color=str_pop_color, -->
+<!--       size=1.5 -->
+<!--       ) + -->
+<!--     geom_point( -->
+<!--       data=df_obs,  -->
+<!--       color="black") + -->
+<!--     geom_line(data=df_obs_Stats, aes(y=q50), color="black") + -->
+<!--     facet_wrap(~obsid) + -->
+<!--     labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) + -->
+<!--     scale_color_brewer(type = "qual", palette = 2) + -->
+<!--     geom_vline(xintercept = 0, color="red", linetype="dotted") + -->
+<!--     coord_cartesian( -->
+<!--       xlim = x_lims, -->
+<!--       ylim = y_lims -->
+<!--     ) + -->
+<!--     # scale_x_log10() + -->
+<!--     theme_ano + -->
+<!--     theme(strip.background = element_rect(fill = "black", color = "white" )) + -->
+<!--     theme(strip.text = element_text(colour = 'white', face="bold", size = 15)) + -->
+<!--     theme(panel.border = element_rect(colour = "black", fill = NA) ) + -->
+<!--     theme(legend.position = "none") -->
+
+<!--   print(plt) -->
+
+<!-- } -->
+
+
+<!-- ``` -->
+
+
+
+<!-- ### Time to LOD -->
+
+<!-- ```{r} -->
+<!-- df_frac_LOD <- df_indiv_mdls_2_compare %>%  -->
+<!--   dplyr::filter(TIME > 0) %>%  -->
+<!--   # dplyr::filter(TIME %% 2 == 0, TIME > 0) %>%  -->
+<!--   dplyr::mutate(below_LOD = ifelse(obs<1, 1 , 0)) %>%  -->
+<!--   group_by(TIME, obsid) %>%  -->
+<!--   summarize( -->
+<!--     frac_below_LOD = sum(below_LOD)/n() -->
+<!--   ) %>%  -->
+<!--   ungroup() -->
+
+
+<!-- df_ttt <- df_frac_LOD %>%  -->
+<!--   dplyr::filter(frac_below_LOD >= 0.8) %>%  -->
+<!--   group_by(obsid) %>%  -->
+<!--   summarise(time_2_LOD_80p = min(TIME)) %>%  -->
+<!--   ungroup() %>%  -->
+<!--   dplyr::arrange(time_2_LOD_80p) -->
+
+<!-- lbl_x <- "time (days)" -->
+<!-- lbl_y <- "Fraction of mice below LOD" -->
+<!-- df_frac_LOD %>%  -->
+<!--   ggplot(aes(x=TIME, y=frac_below_LOD, color=obsid)) + -->
+<!--   geom_line() + -->
+<!--   geom_point() + -->
+<!--   geom_hline(yintercept = 0.8, linetype="dotted") + -->
+<!--   geom_vline(data = df_ttt, aes(xintercept = time_2_LOD_80p, color=obsid), inherit.aes = FALSE, linetype="dashed") + -->
+<!--   labs(x=lbl_x, y=lbl_y) + -->
+<!--   theme_ano -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- df_ttt %>% flextable::flextable() -->
+<!-- ``` -->
+
+
+<!-- ### Sensitivity analysis in simulations -->
+
+
+<!-- ```{r} -->
+<!-- ii <- 1 -->
+<!-- df_simul <- get_sml_simulated_data(df_mdls_2_compare$sml_dir[ii]) %>% drop_na(obsid) -->
+<!-- df_sml_indvparams <- get_sml_individual_parameters(df_mdls_2_compare$sml_dir[ii]) -->
+<!-- df_sml_indvparams %>% dplyr::filter(id == 1) -->
+<!-- # df_simul %>% pull(TIME) %>% max() -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- # considering  -->
+<!-- LOD <- 1 # 10 CFU -->
+<!-- df_simul_stats <- df_simul %>%  -->
+<!--   dplyr::filter(obsid %in% c("log10CFUR", "log10CFUU", "log10CFUV")) %>%  -->
+<!--   dplyr::filter(obs>LOD) %>%  -->
+<!--   group_by(ID, obsid) %>%  -->
+<!--   dplyr::summarise( -->
+<!--     max_obs = max(obs), -->
+<!--     time_2_LOD = ifelse(max(obs)>9, Inf, max(TIME) ) -->
+<!--   ) %>%  -->
+<!--   ungroup() -->
+
+<!-- df_simul_02_weird <- df_simul_stats %>%  -->
+<!--   dplyr::filter(max_obs > 9) %>%  -->
+<!--   pivot_wider( -->
+<!--     id_cols = ID, -->
+<!--     names_from = obsid, -->
+<!--     values_from = c("max_obs", "time_2_LOD"), -->
+<!--     names_sep = "." -->
+<!--   ) %>%  -->
+<!--   left_join( -->
+<!--     df_sml_indvparams %>% dplyr::select(id, deltaU), -->
+<!--     by=c("ID" = "id") -->
+<!--   ) -->
+
+<!-- # mean( -->
+<!-- #   c( -->
+<!-- #     df_simul_02_weird %>% pull(time_2_LOD.log10CFUR), 1, 3, 4 -->
+<!-- #   ), -->
+<!-- #   na.rm = TRUE -->
+<!-- # ) -->
+
+
+<!-- df_simul_02_weird %>%  -->
+<!--   flextable::flextable() %>%  -->
+<!--   flextable::theme_zebra() %>%  -->
+<!--   flextable::separate_header(opts=c("center-hspan", "span-top"), split = "[.]") -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+
+<!-- # df_obs_Stats <- df_obs %>% group_by(TIME, variable, obsid) %>%  -->
+<!-- #   nest() %>%  -->
+<!-- #   dplyr::mutate( -->
+<!-- #     Stats = map_df(data, ~ceor_stats(.$obs, na.rm = TRUE) ) -->
+<!-- #   ) %>%  -->
+<!-- #   unnest(Stats) %>%  -->
+<!-- #   dplyr::select(-data) %>%  -->
+<!-- #   dplyr::mutate(model=NA) -->
+
+<!-- # df_simul_stats[is.finite(df_simul_stats$max_obs),] %>% pull(time_2_LOD) -->
+
+<!-- df_simul_stats[is.finite(df_simul_stats$time_2_LOD), ] %>%  -->
+<!--   group_by(obsid) %>%  -->
+<!--   nest() %>%  -->
+<!--   dplyr::mutate( -->
+<!--     Stats = map_df(data, ~ceor_stats(.$time_2_LOD, na.rm = TRUE) ) -->
+<!--   ) %>%  -->
+<!--   unnest(Stats) %>%  -->
+<!--   ungroup() %>%  -->
+<!--   dplyr::mutate( -->
+<!--     mean = signif(mean, 3), -->
+<!--     sd   = signif(sd, 3) -->
+<!--   ) %>%  -->
+<!--   dplyr::select(-data) %>%  -->
+<!--   flextable::flextable() %>%  -->
+<!--   flextable::theme_zebra() -->
+
+
+<!-- ``` -->
+
+
+
+
+<!-- ```{r} -->
+<!-- lbl_x <- "" -->
+<!-- lbl_y <- "Time to limit of detection" -->
+<!-- df_simul_stats %>%  -->
+<!--   ggplot(aes(x=obsid, y=time_2_LOD)) + -->
+<!--   geom_boxplot() + -->
+<!--   labs(x=lbl_x, y=lbl_y) + -->
+<!--   theme_ano -->
+<!-- ``` -->
+
+
+
+<!-- # Selected Model -->
+
+
+<!-- ## Model Summary  -->
+<!-- ```{r} -->
+<!-- ii_selected_model <- 1 -->
+<!-- # path_mdls_2_compare -->
+<!-- path_mdl_selected <- path_mdls_2_compare[ii_selected_model] -->
+<!-- str_mdl_selected_nickname <- str_mdls_nickname[ii_selected_model] -->
+<!-- print(str_mdl_selected_nickname) -->
+<!-- lbl_subtitle <- str_mdl_selected_nickname -->
+<!-- ``` -->
+
+<!-- ```{r, results='asis'} -->
+<!-- cat(path_mdl_selected) -->
+<!-- cat("\n") -->
+<!-- cat(str_mdl_selected_nickname) -->
+<!-- cat("\n") -->
+
+<!-- ``` -->
+
+<!-- ## VPC {.tabset} -->
+
+<!-- ```{r} -->
+<!-- #   # relative_path <- sprintf("%s/ChartsFigures/%s", mdl_dir, fln_name) -->
+<!-- # relative_path1 <- sprintf("%s/ChartsFigures/%s", path_mdl_selected, "vpc_yR_0_0.png") -->
+<!-- # relative_path2 <- sprintf("%s/ChartsFigures/%s", path_mdl_selected, "vpc_yV_0_0.png") -->
+<!-- # relative_path3 <- sprintf("%s/ChartsFigures/%s", path_mdl_selected, "vpc_yU_0_0.png") -->
+<!-- #   # knitr::include_graphics(c(relative_path1, relative_path2, relative_path3)) -->
+<!-- #    -->
+<!-- # # install.packages("png") -->
+<!-- # library(png) -->
+<!-- # library(grid) -->
+<!-- # library(gridExtra) -->
+<!-- # img1 <-  rasterGrob(as.raster(readPNG(relative_path1)), interpolate = FALSE) -->
+<!-- # img2 <-  rasterGrob(as.raster(readPNG(relative_path2)), interpolate = FALSE) -->
+<!-- # img3 <-  rasterGrob(as.raster(readPNG(relative_path3)), interpolate = FALSE) -->
+<!-- # grid.arrange(img1, img2, img3, ncol = 3) -->
+<!-- #  -->
+<!-- # library(cowplot) -->
+<!-- # ggdraw() +  -->
+<!-- #   draw_image(relative_path1, width = 0.5) +  -->
+<!-- #   draw_image(relative_path2, width = 0.5, x = 0.5) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- path_mlxtran_plot <- function(mdl_dir, fln_name){ -->
+<!--   relative_path <- sprintf("%s/ChartsFigures/%s", mdl_dir, fln_name) -->
+<!--   knitr::include_graphics(relative_path) -->
+<!-- } -->
+<!-- ``` -->
+
+
+<!-- ### Kidney (yR) -->
+<!-- ```{r} -->
+<!-- path_mlxtran_plot(path_mdl_selected, "vpc_yR_0_0.png") -->
+<!-- ``` -->
+
+<!-- ### Bladder (yV) -->
+<!-- ```{r} -->
+<!-- path_mlxtran_plot(path_mdl_selected, "vpc_yV_0_0.png") -->
+<!-- ``` -->
+
+<!-- ### Urine (yU) -->
+<!-- ```{r} -->
+<!-- path_mlxtran_plot(path_mdl_selected, "vpc_yU_0_0.png") -->
+<!-- ``` -->
+
+<!-- ### {-} -->
+
+<!-- ## {-} -->
+
+<!-- ## Individual Parameters -->
+
+<!-- ```{r} -->
+<!-- get_individual_parameters(path_mdl_selected) %>%  -->
+<!--   dplyr::select(id, contains("_mode")) -->
+<!-- ``` -->
+
+
+<!-- ### Rates -->
+
+<!-- ```{r} -->
+<!-- lbl_x <- "" -->
+<!-- lbl_y <- "(1/day)" -->
+<!-- df_indivparams_rates <- get_individual_parameters(path_mdl_selected) %>%  -->
+<!--   dplyr::select(id, contains("_mode")) %>%  -->
+<!--   dplyr::select(id, contains("alpha"), contains("q"), contains("delta")) -->
+
+<!-- df_indivparams_rates_pl <- df_indivparams_rates %>%  -->
+<!--   pivot_longer(-id, names_to = "parameter", values_to = "Rate" ) %>%  -->
+<!--   dplyr::mutate(parameter=str_replace(parameter, "_mode", ""))  -->
+
+<!-- df_indivparams_rates_pl %>%  -->
+<!--   dplyr::mutate(sign = ifelse(Rate<0, "-", "+"))%>%  -->
+<!--   ggplot(aes(x=parameter, y=abs(Rate), color=sign)) + -->
+
+<!--   geom_boxplot(outlier.shape = NA) + -->
+<!--   geom_jitter(alpha=0.25) + -->
+<!--   labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) + -->
+<!--   scale_y_log10( -->
+<!--     breaks = scales::trans_breaks("log10", function(x) 10^x, n=5), -->
+<!--     labels = scales::trans_format("log10", scales::math_format(10^.x) ) -->
+<!--   ) + -->
+<!--   theme_ano + -->
+<!--   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) -->
+
+<!-- ``` -->
+<!-- <!-- For this all connected models the biggest growth rate takes place in V (Bladder) then R (Kidney) and finally in U (Urine) --> -->
+
+
+<!-- ### Growth Rates -->
+
+<!-- ```{r} -->
+<!-- lbl_x <- "" -->
+<!-- lbl_y <- "(1/day)" -->
+<!-- df_indivparams_alphas <- get_individual_parameters(path_mdl_selected) %>%  -->
+<!--   dplyr::select(id, contains("_mode")) %>%  -->
+<!--   dplyr::select(id, contains("alpha"), contains("delta")) -->
+
+<!-- df_indivparams_alphas_pl <- df_indivparams_alphas %>%  -->
+<!--   pivot_longer(-id, names_to = "parameter", values_to = "Rate" ) %>%  -->
+<!--   dplyr::mutate(parameter=str_replace(parameter, "_mode", ""))  -->
+
+
+<!-- # df_indivparams_alphas_pl %>% pull(Rate) %>% unique() -->
+
+<!-- df_indivparams_alphas_pl %>%  -->
+<!--   dplyr::mutate(sign = ifelse(Rate<0, "-", "+")) %>%  -->
+<!--   ggplot(aes(x=parameter, y=abs(Rate), color=sign)) + -->
+<!--   # geom_point() + -->
+<!--   geom_boxplot(outlier.shape = NA) + -->
+<!--   geom_jitter(alpha=0.25) + -->
+<!--   labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) + -->
+<!--   scale_y_log10( -->
+<!--     breaks = scales::trans_breaks("log10", function(x) 10^x, n=5), -->
+<!--     labels = scales::trans_format("log10", scales::math_format(10^.x) ) -->
+<!--   ) + -->
+<!--   theme_ano -->
+<!-- ``` -->
+
+
+<!-- ### Transitions Rates -->
+<!-- ```{r} -->
+<!-- lbl_x <- "" -->
+<!-- lbl_y <- "(1/day)" -->
+
+<!-- df_indivparams_qXY_rates <- get_individual_parameters(path_mdl_selected) %>%  -->
+<!--   dplyr::select(id, contains("_mode")) %>%  -->
+<!--   dplyr::select(id, contains("q")) -->
+
+<!-- df_indivparams_qXY_rates %>%  -->
+<!--   pivot_longer(-id, names_to = "parameter", values_to = "Rate" ) %>%  -->
+<!--   dplyr::mutate(parameter=str_replace(parameter, "_mode", "")) %>%  -->
+<!--   ggplot(aes(x=parameter, y=Rate, color=parameter)) + -->
+<!--   geom_boxplot(outlier.shape = NA) + -->
+<!--   geom_jitter(alpha=0.25) + -->
+<!--   labs(subtitle = lbl_subtitle) + -->
+<!--   scale_y_log10( -->
+<!--     breaks = scales::trans_breaks("log10", function(x) 10^x, n=5), -->
+<!--     labels = scales::trans_format("log10", scales::math_format(10^.x) ) -->
+<!--   ) + -->
+<!--   theme_ano -->
+<!-- ``` -->
+
+
+
+<!-- ### VolU -->
+
+<!-- ```{r} -->
+<!-- lbl_x <- "" -->
+<!-- lbl_y <- "(1/day)" -->
+<!-- df_indivparams_VolU <- get_individual_parameters(path_mdl_selected) %>%  -->
+<!--   dplyr::select(id, contains("_mode")) %>%  -->
+<!--   dplyr::select(id, contains("VolU")) -->
+
+<!-- df_indivparams_VolU_pl <- df_indivparams_VolU %>%  -->
+<!--   pivot_longer(-id, names_to = "parameter", values_to = "VolU" ) %>%  -->
+<!--   dplyr::mutate(parameter=str_replace(parameter, "_mode", ""))  -->
+
+
+<!-- # df_indivparams_alphas_pl %>% pull(Rate) %>% unique() -->
+
+<!-- df_indivparams_VolU_pl %>%  -->
+<!--   # dplyr::mutate(sign = ifelse(Rate<0, "-", "+")) %>%  -->
+<!--   ggplot(aes(x=parameter, y=VolU)) + #, color=sign -->
+<!--   # geom_point() + -->
+<!--   geom_boxplot(outlier.shape = NA) + -->
+<!--   geom_jitter(alpha=0.25) + -->
+<!--   labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) + -->
+<!--   # scale_y_log10( -->
+<!--   #   breaks = scales::trans_breaks("log10", function(x) 10^x, n=5), -->
+<!--   #   labels = scales::trans_format("log10", scales::math_format(10^.x) ) -->
+<!--   # ) + -->
+<!--   theme_ano -->
+<!-- ``` -->
+
+
+
+

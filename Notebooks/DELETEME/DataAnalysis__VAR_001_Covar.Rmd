@@ -1,0 +1,671 @@
+---
+title: "VAR_001"
+author: "Carlos Olivares"
+date: "11/30/2023"
+output: 
+  html_document:
+    code_folding: hide
+    toc: TRUE
+    number_sections: TRUE
+---
+
+
+# Model description
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=FALSE, warning=FALSE, cache=TRUE, collapse = TRUE)
+```
+
+
+```{r}
+
+f_replace_to_fix <- function (x){
+  ifelse(
+    str_detect(x, "NA%"),
+    str_replace(
+      str_replace(x, "NO_rse", "(fix)"),
+      "NA%",
+      "(fix)"
+      ),
+    x
+    )
+}
+
+get_df_params_pop_omega <- function(df_mdls_2_compare, param_type="all"){
+  df_params_fitting <- df_mdls_2_compare %>% 
+    dplyr::filter(!str_detect(parameter, "_pop") & !str_detect(parameter, "omega_")) %>% 
+    dplyr::mutate(param_type="fit")
+
+  df_params_pop <- df_mdls_2_compare %>% 
+    dplyr::filter(str_detect(parameter, "_pop")) %>% 
+    dplyr::mutate(parameter=str_replace(parameter, "_pop", "")) %>% 
+    dplyr::mutate(param_type="pop")
+  
+  df_params_omega <- df_mdls_2_compare %>% 
+    dplyr::filter(str_detect(parameter, "omega_")) %>% 
+    dplyr::mutate(parameter=str_replace(parameter, "omega_", "")) %>% 
+    dplyr::mutate(param_type="omega")
+  
+  df_params_pop_omega <- bind_rows(
+    df_params_pop,
+    df_params_omega
+  ) %>% arrange(
+    parameter, param_type
+  ) %>%
+    dplyr::select(
+      parameter, param_type, everything()
+    )
+  
+  df_params_pop_omega %>% 
+    dplyr::mutate_all(~replace_na(., "")) %>% 
+    dplyr::mutate( across(everything(), ~f_replace_to_fix(.x) ) ) %>% 
+    get_flx_tbl_monolix() %>% 
+    flextable::merge_v(j=c("parameter"))
+  
+  if (param_type == "all"){
+    return(
+      bind_rows(
+        df_params_fitting,
+        df_params_pop_omega
+      )
+    )
+  }else if(param_type == "pop"){
+    return(df_params_pop)
+  }else if(param_type == "omega"){
+    return(df_params_omega)
+  }else if(param_type == "pop_omega"){
+    return(df_params_pop_omega)
+  }else if(param_type == "fit"){
+    return(df_params_fitting)
+  }else{
+    return(NULL)
+  }
+}
+```
+
+
+
+
+```{r}
+source("../Anoruti_commons.R", local = knitr::knit_global())
+```
+
+
+```{r}
+DF_ID_STRAIN_AB_CODE_TIME <- read.csv("DF_ID_STRAIN_AB_CODE_TIME.CSV") %>% 
+  dplyr::select(-X) %>% 
+  dplyr::filter(!(id %in% c(151, 152, 153, 367, 368)) ) %>% 
+  dplyr::select(-grupo)
+# DF_ID_STRAIN_AB_CODE_TIME %>% group_by(id) %>% summarise(nn=n()) %>% dplyr::filter(nn !=1)
+```
+
+
+```{r}
+get_sml_simulated_data <- function(sml_dir_ii){
+  fln_sml_data <- sprintf("%s/Simulation/simulatedData.txt", sml_dir_ii)
+  tbl_sml_ii <- read.csv(fln_sml_data, na.strings = ".") %>% tibble()
+  return(tbl_sml_ii)
+} 
+```
+
+
+
+
+
+```{r}
+path_mdls_2_compare <- c(
+  
+  "VAR_001/mdl_AB_Ct_strain_ALL_NOSS_VAR_r000",
+  "VAR_001/mdl_AB_Ct_strain_ALL_NOSS_VAR_deltaU_r000",
+  "../Modeling_Ct_strain_PAS/V_ADM_V/mdl_R_V_U_NoD_ADM_pV_NOSS_VAR_deltaU_r000",
+  
+  "VAR_001/mdl_AB_Ct_strain_ALL_NOSS_NOVAR_r000",
+  
+  "VAR_001/mdl_AB_Ct_strain_ALL_NOSS_VAR_logit_deltaU_r000",
+  
+  "VAR_001/mdl_AB_Ct_strain_ALL_NOSS_VAR_deltaU_covar_deltaU"
+
+) 
+
+str_mdls_nickname <- c(
+  
+  "NOSS_VAR",
+  "NOSS_VAR_deltaU",
+  "PAS.NOSS_VAR_deltaU",
+  
+  "NOSS_NOVAR",
+  
+  "NOSS_VAR_logit_deltaU",
+  
+  "NOSS_VAR_covar_logit_deltaU"
+  
+)
+```
+
+
+
+
+```{r}
+
+df_mdls_2_compare <- data.frame(mdl_nickname=str_mdls_nickname, mdl_dir=path_mdls_2_compare) %>% 
+  dplyr::mutate(sml_dir=str_replace(mdl_dir, "mdl_", "sml_"))
+df_mdls_2_compare %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra()
+```
+
+
+
+```{r}
+# ii <- 3
+# get_onecol_tbl(path_mdls_2_compare[ii], mdl_nickname = str_mdls_nickname[ii])
+
+df_mdls_parameters_2_compare <- lapply(
+  seq_along(path_mdls_2_compare),
+  function(ii) get_onecol_tbl(path_mdls_2_compare[ii], mdl_nickname = str_mdls_nickname[ii])
+) %>% 
+  purrr::reduce(full_join, by=c("parameter")) 
+
+```
+
+
+
+
+## Parameters Comparisons {.tabset}
+
+
+### BICc order
+```{r}
+# v_models_BICc_order <- 
+df_BICc_model_comparisons <- get_df_params_pop_omega(df_mdls_parameters_2_compare, param_type = "fit") %>% 
+  dplyr::filter(parameter == "BICc") %>% 
+  dplyr::select(-parameter, -param_type) %>% 
+  pivot_longer(cols = everything(), names_to = "model", values_to = "BICc" ) %>% 
+  dplyr::arrange(BICc) 
+
+v_models_BICc_levels <- df_BICc_model_comparisons %>% pull(model)
+
+df_BICc_model_comparisons %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra()
+```
+
+
+### Fiting criteria
+```{r}
+get_df_params_pop_omega(df_mdls_parameters_2_compare, param_type = "fit") %>% 
+  dplyr::mutate(param_type = "") %>%
+  dplyr::select(parameter, param_type, everything()) %>% 
+  dplyr::select(-param_type) %>% 
+  dplyr::mutate( across(everything(), ~f_replace_to_fix(.x) ) ) %>% 
+  dplyr::mutate_all(~replace_na(., "")) %>% 
+  get_flx_tbl_monolix()
+  
+```
+
+
+
+### Population parameters
+```{r}
+get_df_params_pop_omega(df_mdls_parameters_2_compare, param_type = "pop") %>% 
+  # dplyr::mutate(param_type = "") %>% 
+  dplyr::select(parameter, param_type, everything()) %>% 
+  dplyr::mutate( across(everything(), ~f_replace_to_fix(.x) ) ) %>% 
+  dplyr::mutate_all(~replace_na(., "")) %>% 
+  get_flx_tbl_monolix()
+  
+```
+
+
+### Omega parameters
+```{r}
+get_df_params_pop_omega(df_mdls_parameters_2_compare, param_type = "omega") %>% 
+  # dplyr::mutate(param_type = "") %>% 
+  dplyr::select(parameter, param_type, everything()) %>% 
+  dplyr::mutate( across(everything(), ~f_replace_to_fix(.x) ) ) %>% 
+  dplyr::select_if(~ !all(is.na(.))) %>% 
+  dplyr::mutate_all(~replace_na(., "")) %>% 
+  get_flx_tbl_monolix()
+  
+```
+
+
+
+
+
+```{r}
+get_sml_simulated_data(df_mdls_2_compare$sml_dir[6])
+
+```
+
+
+
+```{r}
+# get_sml_simulated_data(df_mdls_2_compare$sml_dir[1])
+# log10CFUV
+# ii <- 2
+df_pop_mdls_2_compare <- lapply(
+  seq_along(df_mdls_2_compare$sml_dir), 
+  function (ii)
+  if ( "log10CFUV" %in% colnames( get_sml_simulated_data(df_mdls_2_compare$sml_dir[ii]) ) ){
+      get_sml_simulated_data(df_mdls_2_compare$sml_dir[ii]) %>% 
+        dplyr::rename("obs"="log10CFUV") %>% 
+        dplyr::mutate(obsid=ifelse(is.na(obs), NA, "log10CFUV")) %>% 
+        dplyr::filter(!is.na(obsid)) %>% 
+        dplyr::filter(group == "simulationGroup1") %>% 
+        dplyr::mutate(model=df_mdls_2_compare$mdl_nickname[ii] )
+    }else{
+      get_sml_simulated_data(df_mdls_2_compare$sml_dir[ii]) %>% 
+        dplyr::filter(!is.na(obsid)) %>% 
+        dplyr::filter(group == "simulationGroup1") %>% 
+        dplyr::mutate(model=df_mdls_2_compare$mdl_nickname[ii] )
+    }
+  
+  ) %>% 
+  dplyr::bind_rows()
+
+# df_pop_mdls_2_compare
+```
+
+##{-}
+
+## Plots
+
+### Population
+
+
+```{r, fig.width=20, fig.height=6}
+dir_mlx_ii <- df_mdls_2_compare$mdl_dir[1]
+
+df_yR <- get_observations(dir_mlx_ii, "yR") %>%
+  dplyr::rename("TIME"="time") %>%
+  dplyr::rename("obs"="observation") %>%
+  dplyr::mutate(obsid="log10CFUR")
+
+df_yV <- get_observations(dir_mlx_ii, "yV") %>%
+  dplyr::rename("TIME"="time") %>% 
+  dplyr::rename("obs"="observation") %>% 
+  dplyr::mutate(obsid="log10CFUV") 
+
+df_yU <- get_observations(dir_mlx_ii, "yU") %>%
+  dplyr::rename("TIME"="time") %>%
+  dplyr::rename("obs"="observation") %>%
+  dplyr::mutate(obsid="log10CFUU")
+
+df_obs <- bind_rows(
+  list(df_yR, df_yV, df_yU)
+  ) %>% 
+  dplyr::mutate(group="data") %>% 
+  dplyr::mutate(model=NA) %>% 
+  left_join(
+    DF_ID_STRAIN_AB_CODE_TIME %>% dplyr::rename("ID"="id"),
+    by=c("ID", "TIME")
+  ) %>% 
+  dplyr::mutate(
+    strain=factor(strain, levels = v_strain_levels)
+  )
+
+
+df_obs_Stats <- df_obs %>% group_by(TIME, variable, obsid) %>% 
+  nest() %>% 
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$obs, na.rm = TRUE) )
+  ) %>% 
+  unnest(Stats) %>% 
+  dplyr::select(-data) %>% 
+  dplyr::mutate(model=NA)
+
+```
+
+
+
+```{r, fig.width=14, fig.height=5}
+df_pop_mdls_2_compare <- lapply(
+  seq_along(df_mdls_2_compare$sml_dir), 
+  function (ii)
+    if ( "log10CFUV" %in% colnames( get_sml_simulated_data(df_mdls_2_compare$sml_dir[ii]) ) ){
+      get_sml_simulated_data(df_mdls_2_compare$sml_dir[ii]) %>% 
+        dplyr::rename("obs"="log10CFUV") %>% 
+        dplyr::mutate(obsid=ifelse(is.na(obs), NA, "log10CFUV")) %>% 
+        dplyr::filter(!is.na(obsid)) %>% 
+        dplyr::filter(group == "simulationGroup1") %>% 
+        dplyr::mutate(model=df_mdls_2_compare$mdl_nickname[ii] )
+    }else{
+      get_sml_simulated_data(df_mdls_2_compare$sml_dir[ii]) %>% 
+        dplyr::filter(!is.na(obsid)) %>% 
+        dplyr::filter(group == "simulationGroup1") %>% 
+        dplyr::mutate(model=df_mdls_2_compare$mdl_nickname[ii] )
+    }
+  ) %>% 
+  dplyr::bind_rows() 
+  # purrr::reduce(full_join, by=c("parameter")) 
+
+lbl_y <- ""
+lbl_x <- "time (days)"
+lbl_subtitle <- "Model Comparison Population Parameters"
+df_pop_mdls_2_compare %>% 
+  ggplot(aes(x=TIME, y=obs, color=model)) +
+  geom_line(size=1.5) +
+  geom_point(data=df_obs, aes(shape=strain), color="black") +
+  geom_line(data=df_obs_Stats, aes(y=q50), color="black") +
+  facet_wrap(~obsid) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  scale_color_brewer(type = "qual", palette = 3) +
+  scale_shape_manual(values=nv_strain_shape) +
+  geom_vline(xintercept = 0, color="red", linetype="dotted") +
+  # coord_cartesian(
+  #   xlim = c(0, 0.1)
+  # ) +
+  # scale_x_log10() +
+  theme_ano +
+  theme(strip.background = element_rect(fill = "black", color = "white" )) +
+  theme(strip.text = element_text(colour = 'white', face="bold", size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+
+
+
+
+```
+
+
+
+
+
+### Individual Fits {.tabset}
+
+```{r, fig.width=15, fig.height=6}
+
+# dplyr::rename("obs"="log10CFUV") %>% 
+#     dplyr::mutate(obsid=ifelse(is.na(obs), NA, "log10CFUV")) %>% 
+#     dplyr::filter(!is.na(obsid)) %>% 
+
+df_indiv_mdls_2_compare <- lapply(
+  seq_along(df_mdls_2_compare$sml_dir), 
+  function (ii)
+    if ( "log10CFUV" %in% colnames( get_sml_simulated_data(df_mdls_2_compare$sml_dir[ii]) ) ){
+      get_sml_simulated_data(df_mdls_2_compare$sml_dir[ii]) %>% 
+        dplyr::rename("obs"="log10CFUV") %>% 
+        dplyr::mutate(obsid=ifelse(is.na(obs), NA, "log10CFUV")) %>% 
+        dplyr::filter(!is.na(obsid)) %>% 
+        dplyr::filter(group == "simulationGroup2") %>% 
+        dplyr::mutate(model=df_mdls_2_compare$mdl_nickname[ii] )
+    }else{
+      get_sml_simulated_data(df_mdls_2_compare$sml_dir[ii]) %>% 
+        dplyr::filter(!is.na(obsid)) %>% 
+        dplyr::filter(group == "simulationGroup2") %>% 
+        dplyr::mutate(model=df_mdls_2_compare$mdl_nickname[ii] )
+    }
+  ) %>% 
+  dplyr::bind_rows()
+  # purrr::reduce(full_join, by=c("parameter"))
+```
+
+```{r}
+# v_mdl_nicks <- df_indiv_mdls_2_compare %>% pull(model) %>% unique()
+v_mdl_nicks <- v_models_BICc_levels
+```
+
+
+```{r, results='asis', fig.width = 15, fig.height = 6}
+
+
+lbl_y <- ""
+lbl_x <- "time (days)"
+y_lims <- c(0, 10)
+x_lims <- c(0, 30)
+
+str_pop_color <- "#4d004b"
+for (i in seq(1, length(v_mdl_nicks) ) ){
+  str_tmp_model_nick <- v_mdl_nicks[i]
+  cat("\n")
+  cat("\n")
+  cat("#### ", str_tmp_model_nick, "\n")
+  
+  lbl_subtitle <- sprintf("Model %s Individual Fits", str_tmp_model_nick)
+  
+  plt <- df_indiv_mdls_2_compare %>% 
+    dplyr::filter(model == str_tmp_model_nick) %>% 
+    ggplot(aes(x=TIME, y=obs, color=model)) +
+    geom_line(aes(group=interaction(ID, model)), size=0.5, alpha=0.5) +
+    geom_line(
+      data=df_pop_mdls_2_compare %>% dplyr::filter(model == str_tmp_model_nick), 
+      color=str_pop_color,
+      size=1.5
+      ) +
+    geom_point(
+      data=df_obs, 
+      aes(shape=strain),
+      color="black") +
+    geom_line(data=df_obs_Stats, aes(y=q50), color="black") +
+    facet_wrap(~obsid) +
+    labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+    scale_color_brewer(type = "qual", palette = 2) +
+    geom_vline(xintercept = 0, color="red", linetype="dotted") +
+    coord_cartesian(
+      xlim = x_lims,
+      ylim = y_lims
+    ) +
+    scale_shape_manual(values=nv_strain_shape) +
+    # scale_x_log10() +
+    theme_ano +
+    theme(strip.background = element_rect(fill = "black", color = "white" )) +
+    theme(strip.text = element_text(colour = 'white', face="bold", size = 15)) +
+    theme(panel.border = element_rect(colour = "black", fill = NA) ) +
+    theme(legend.position = "none")
+
+  print(plt)
+  
+}
+
+
+```
+
+
+
+
+
+
+
+
+# Selected Model
+
+
+## Model Summary 
+```{r}
+ii_selected_model <- 2
+# path_mdls_2_compare
+path_mdl_selected <- path_mdls_2_compare[ii_selected_model]
+str_mdl_selected_nickname <- str_mdls_nickname[ii_selected_model]
+print(str_mdl_selected_nickname)
+lbl_subtitle <- str_mdl_selected_nickname
+```
+
+```{r, results='asis'}
+cat(path_mdl_selected)
+cat("\n")
+cat(str_mdl_selected_nickname)
+cat("\n")
+
+```
+
+## VPC {.tabset}
+
+```{r}
+#   # relative_path <- sprintf("%s/ChartsFigures/%s", mdl_dir, fln_name)
+# relative_path1 <- sprintf("%s/ChartsFigures/%s", path_mdl_selected, "vpc_yR_0_0.png")
+# relative_path2 <- sprintf("%s/ChartsFigures/%s", path_mdl_selected, "vpc_yV_0_0.png")
+# relative_path3 <- sprintf("%s/ChartsFigures/%s", path_mdl_selected, "vpc_yU_0_0.png")
+#   # knitr::include_graphics(c(relative_path1, relative_path2, relative_path3))
+#   
+# # install.packages("png")
+# library(png)
+# library(grid)
+# library(gridExtra)
+# img1 <-  rasterGrob(as.raster(readPNG(relative_path1)), interpolate = FALSE)
+# img2 <-  rasterGrob(as.raster(readPNG(relative_path2)), interpolate = FALSE)
+# img3 <-  rasterGrob(as.raster(readPNG(relative_path3)), interpolate = FALSE)
+# grid.arrange(img1, img2, img3, ncol = 3)
+# 
+# library(cowplot)
+# ggdraw() + 
+#   draw_image(relative_path1, width = 0.5) + 
+#   draw_image(relative_path2, width = 0.5, x = 0.5)
+```
+
+
+```{r}
+path_mlxtran_plot <- function(mdl_dir, fln_name){
+  relative_path <- sprintf("%s/ChartsFigures/%s", mdl_dir, fln_name)
+  knitr::include_graphics(relative_path)
+}
+```
+
+
+### Kidney (yR)
+```{r}
+path_mlxtran_plot(path_mdl_selected, "vpc_yR_0_0.png")
+```
+
+### Bladder (yV)
+```{r}
+path_mlxtran_plot(path_mdl_selected, "vpc_yV_0_0.png")
+```
+
+### Urine (yU)
+```{r}
+path_mlxtran_plot(path_mdl_selected, "vpc_yU_0_0.png")
+```
+
+### {-}
+
+## {-}
+
+## Individual Parameters
+
+```{r}
+get_individual_parameters(path_mdl_selected) %>% 
+  dplyr::select(id, contains("_mode"))
+```
+
+
+### Rates
+
+```{r}
+lbl_x <- ""
+lbl_y <- "(1/day)"
+df_indivparams_rates <- get_individual_parameters(path_mdl_selected) %>% 
+  dplyr::select(id, contains("_mode")) %>% 
+  dplyr::select(id, contains("alpha"), contains("q"), contains("delta"))
+
+df_indivparams_rates_pl <- df_indivparams_rates %>% 
+  pivot_longer(-id, names_to = "parameter", values_to = "Rate" ) %>% 
+  dplyr::mutate(parameter=str_replace(parameter, "_mode", "")) 
+
+df_indivparams_rates_pl %>% 
+  dplyr::mutate(sign = ifelse(Rate<0, "-", "+"))%>% 
+  ggplot(aes(x=parameter, y=abs(Rate), color=sign)) +
+  
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(alpha=0.25) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  scale_y_log10(
+    breaks = scales::trans_breaks("log10", function(x) 10^x, n=5),
+    labels = scales::trans_format("log10", scales::math_format(10^.x) )
+  ) +
+  theme_ano +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+<!-- For this all connected models the biggest growth rate takes place in V (Bladder) then R (Kidney) and finally in U (Urine) -->
+
+
+### Growth Rates
+
+```{r}
+lbl_x <- ""
+lbl_y <- "(1/day)"
+df_indivparams_alphas <- get_individual_parameters(path_mdl_selected) %>% 
+  dplyr::select(id, contains("_mode")) %>% 
+  dplyr::select(id, contains("alpha"), contains("delta"))
+
+df_indivparams_alphas_pl <- df_indivparams_alphas %>% 
+  pivot_longer(-id, names_to = "parameter", values_to = "Rate" ) %>% 
+  dplyr::mutate(parameter=str_replace(parameter, "_mode", "")) 
+
+
+# df_indivparams_alphas_pl %>% pull(Rate) %>% unique()
+
+df_indivparams_alphas_pl %>% 
+  dplyr::mutate(sign = ifelse(Rate<0, "-", "+")) %>% 
+  ggplot(aes(x=parameter, y=abs(Rate), color=sign)) +
+  # geom_point() +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(alpha=0.25) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  scale_y_log10(
+    breaks = scales::trans_breaks("log10", function(x) 10^x, n=5),
+    labels = scales::trans_format("log10", scales::math_format(10^.x) )
+  ) +
+  theme_ano
+```
+
+
+### Transitions Rates
+```{r}
+lbl_x <- ""
+lbl_y <- "(1/day)"
+
+df_indivparams_qXY_rates <- get_individual_parameters(path_mdl_selected) %>% 
+  dplyr::select(id, contains("_mode")) %>% 
+  dplyr::select(id, contains("q"))
+
+df_indivparams_qXY_rates %>% 
+  pivot_longer(-id, names_to = "parameter", values_to = "Rate" ) %>% 
+  dplyr::mutate(parameter=str_replace(parameter, "_mode", "")) %>% 
+  ggplot(aes(x=parameter, y=Rate, color=parameter)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(alpha=0.25) +
+  labs(subtitle = lbl_subtitle) +
+  scale_y_log10(
+    breaks = scales::trans_breaks("log10", function(x) 10^x, n=5),
+    labels = scales::trans_format("log10", scales::math_format(10^.x) )
+  ) +
+  theme_ano
+```
+
+
+
+### VolU
+
+```{r}
+lbl_x <- ""
+lbl_y <- "(1/day)"
+df_indivparams_VolU <- get_individual_parameters(path_mdl_selected) %>% 
+  dplyr::select(id, contains("_mode")) %>% 
+  dplyr::select(id, contains("VolU"))
+
+df_indivparams_VolU_pl <- df_indivparams_VolU %>% 
+  pivot_longer(-id, names_to = "parameter", values_to = "VolU" ) %>% 
+  dplyr::mutate(parameter=str_replace(parameter, "_mode", "")) 
+
+
+# df_indivparams_alphas_pl %>% pull(Rate) %>% unique()
+
+df_indivparams_VolU_pl %>% 
+  # dplyr::mutate(sign = ifelse(Rate<0, "-", "+")) %>% 
+  ggplot(aes(x=parameter, y=VolU)) + #, color=sign
+  # geom_point() +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(alpha=0.25) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  # scale_y_log10(
+  #   breaks = scales::trans_breaks("log10", function(x) 10^x, n=5),
+  #   labels = scales::trans_format("log10", scales::math_format(10^.x) )
+  # ) +
+  theme_ano
+```
+
+
+
+

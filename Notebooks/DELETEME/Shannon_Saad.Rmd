@@ -1,0 +1,1986 @@
+---
+title: "Diversity Index Description"
+author: "Saad, Julie, Carlos, Etienne"
+date: "11/13/2023"
+output: 
+  html_document:
+    code_folding: hide
+    toc: TRUE
+    number_sections: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE, cache=TRUE, collapse = TRUE)
+```
+
+
+
+
+
+<!-- FUNCTIONS -->
+
+
+```{r}
+H_entropy <- function(relAbun){
+  # 1. Normalize relativeAbun just in case
+  p = relAbun/sum(relAbun, na.rm = TRUE)
+  neg_log_p <- -log(p)
+  neg_log_p[is.infinite(neg_log_p)] <- 0
+  neg_log_p[is.na(neg_log_p)] <- 0
+  H = sum( p*neg_log_p )
+  return(H)
+}
+```
+
+
+```{r}
+ceor_stats <- function(x, na.rm=FALSE) {
+  r <- c(quantile(x, probs=0.05, na.rm = na.rm),
+         quantile(x, probs=0.25, na.rm = na.rm),
+         quantile(x, probs=0.5, na.rm = na.rm),
+         quantile(x, probs=0.75, na.rm = na.rm),
+         quantile(x, probs=0.95, na.rm = na.rm),
+         mean(x, na.rm=na.rm),
+         sd(x, na.rm=na.rm),
+         min(x, na.rm=na.rm),
+         max(x, na.rm=na.rm),
+         length(na.omit(x))
+  )
+  names(r) <- c("q05", "q25", "q50", "q75", "q95", "mean", "sd", "min", "max", "num") # Standard column names for geom_boxplot
+  return(r)
+}
+
+```
+
+<!-- GLOBAL VARIABLES -->
+```{r}
+library(tidyverse)
+theme_bla <-theme_bw() +
+  # theme(legend.position = "none")+
+  theme(
+    plot.title = element_text(size = 24,hjust=-0.03),
+    axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.text=element_text(size=16),
+    axis.title=element_text(size=18),
+    axis.line.x = element_line(size = 0.5, linetype = "solid", colour = "black"),
+    axis.line.y = element_line(size = 0.5, linetype = "solid", colour = "black")
+  )
+```
+
+
+```{r}
+DF_SAMPLE_SUBJS <- read.csv("DF_SAMPLE_SUBJS.CSV")
+
+DF_SAMPLEID_DAY <- read.csv("DF_SAMPLE.CSV") %>% 
+  dplyr::select(sampleID, SUBJID, DAY)
+
+
+DF_BACTERIA_REF_16S <- read.csv("DF_BACTERIA_REF_16S.CSV")
+
+nv_ACTARMCD_DAV <- c(
+  "Ct"  = "NODAV", "CtD1"  = "DAVD1", "CtD2"  = "DAVD2",
+  "CRO" = "NODAV", "CROD1" = "DAVD1", "CROD2" = "DAVD2",
+  "CZA" = "NODAV", "CZAD1" = "DAVD1", "CZAD2" = "DAVD2",
+  "PTZ" = "NODAV", "PTZD1" = "DAVD1", "PTZD2" = "DAVD2"
+)
+v_DAV_levels <-  c("NODAV", "DAVD1", "DAVD2")
+v_DRUG_COMPLEX_levels <-  c("Ct", "CRO", "CZA", "PTZ")
+v_TAXONMIC_RANK <- c("domain", "phylum", "class", "order", "family", "genus", "species")
+
+nv_DRUG_COMPLEX_shape <- c("Ct"=0, "CRO"=17, "CZA"=16, "PTZ"=15)
+nv_DRUG_COMPLEX_CODE <- c("CRO" = 1, "CZA"=2, "PTZ" = 3, "Ct" = 4)
+
+nv_DAV_CD_color <- c("0"="#FF0000", "1"="#259bff", "2"="#004076")
+
+nv_DAV_color <- c("NODAV"="#FF0000", "DAVD1"="#259bff", "DAVD2"="#004076")
+
+nv_DAV_shape <- c("NODAV"=21, "DAVD1"=25, "DAVD2"=24)
+
+v_DAY_levels <- c(1, 6, 37)
+nv_DAY_color <- c(
+  "1"="#c7e9b4",
+  "6"="#1d91c0",
+  "37"="black"
+)
+
+nv_DAY_shape <- c(
+  "1"=16,
+  "6"=6,
+  "37"=1
+)
+
+nv_original_to_new_gene_class <- c("BlaA", "BlaB3", "BlaD", "BlaB1")
+names(nv_original_to_new_gene_class) <- c("Candidate_blaa", "Candidate_blab3", "Candidate_blad", "Candidate_blab1")
+v_class_levels <- c("BlaA", "BlaB3", "BlaD", "BlaB1") #c("Candidate_blaa", "Candidate_blab3", "Candidate_blad", "Candidate_blab1")
+nv_class_COLOR <- c("#e41a1c", "#984ea3", "#4daf4a", "#ff7f00"); names(nv_class_COLOR) <- v_class_levels
+
+
+```
+
+# Species by Resistant genes
+
+```{r}
+DF_SPECIES_RANK_BY_GENES <- read.csv("DF_SPECIES_RANK_BY_GENES.CSV")
+# DF_SPECIES_RANK_BY_GENES %>% head()
+
+```
+
+
+# Species Abundance
+
+
+```{r}
+df_All_samples <- read.csv("All_samples.csv")
+df_All_samples$abundance
+df_All_samples02 <- df_All_samples %>%
+  dplyr::mutate(abundance=as.numeric(str_replace(abundance, ",", ".")))
+
+# df_All_samples %>% dplyr::filter(str_detect(abundance, "938378"))
+# df_All_samples02$abundance %>% sort(decreasing = TRUE)
+```
+
+```{r}
+# df_All_samples %>% 
+#   dplyr::filter(str_detect(user_genome, "D0040R001_Bin_output")) %>% 
+#   dplyr::mutate(abundance.num=as.numeric(str_replace(abundance, ",", "."))) %>% View()
+
+
+```
+
+
+```{r}
+DF_SPECIES_ABUNDANCES <- read.csv("All_samples.csv") %>% 
+  dplyr::select(classification, species, abundance, Metagenomes) %>% 
+  dplyr::mutate(abundance=as.numeric(str_replace(abundance, ",", "."))) %>%
+  dplyr::mutate(domain  = str_split_i(classification, ";", 1) ) %>% 
+  dplyr::mutate(phylum  = str_split_i(classification, ";", 2) ) %>% 
+  dplyr::mutate(class   = str_split_i(classification, ";", 3) ) %>% 
+  dplyr::mutate(order   = str_split_i(classification, ";", 4) ) %>% 
+  dplyr::mutate(family  = str_split_i(classification, ";", 5) ) %>% 
+  dplyr::mutate(genus   = str_split_i(classification, ";", 6) ) %>% 
+  dplyr::mutate(species = str_split_i(classification, ";", 7) ) %>% 
+  dplyr::select(-classification) %>% 
+  dplyr::mutate(sampleID=str_replace_all(Metagenomes, "_mg", "")) %>% 
+  dplyr::mutate(sampleID = str_replace_all(sampleID, "D", "")) %>% 
+  dplyr::mutate(sampleID = str_replace_all(sampleID, "_R", "R")) %>% 
+  dplyr::mutate(sampleID = str_replace_all(sampleID, "_R", "R")) %>% 
+  dplyr::mutate(sampleID = str_replace_all(sampleID, "R", ".R")) %>% 
+  dplyr::select(-Metagenomes) %>% 
+  left_join(
+    DF_SAMPLE_SUBJS,
+    by="sampleID"
+  ) %>% 
+  left_join(
+    DF_SAMPLEID_DAY,
+    by=c("sampleID", "SUBJID")
+  )  %>% 
+  dplyr::mutate(
+    species=str_replace_all(species, "__", "_"),
+    genus=str_replace_all(genus, "__", "_"),
+    family=str_replace_all(family, "__", "_"),
+    order=str_replace_all(order, "__", "_"),
+    class=str_replace_all(class, "__", "_"),
+    phylum=str_replace_all(phylum, "__", "_"),
+    domain=str_replace_all(domain, "__", "_")
+    ) %>% 
+  group_by(SUBJID) %>% 
+  dplyr::mutate(sum_abundance=sum(abundance)) %>% 
+  dplyr::mutate(RelAbun_SHTGN = abundance/sum_abundance) %>% 
+  ungroup() %>% 
+  dplyr::mutate(DAV = nv_ACTARMCD_DAV[ACTARMCD] )
+
+```
+
+## Generalities
+
+From the provided data there are 
+```{r, results='asis'}
+cat( DF_SPECIES_ABUNDANCES %>% pull(sampleID) %>% unique() %>% length() )
+```
+samples from a total of 
+
+```{r, results='asis'}
+cat( DF_SPECIES_ABUNDANCES %>% pull(SUBJID) %>% unique() %>% length() )
+```
+subjects distributed in the 
+```{r, results='asis'}
+cat( DF_SPECIES_ABUNDANCES %>% pull(ACTARMCD) %>% unique() %>% sort())
+```
+antibiotic treatment groups were identified different OTUs distributed as the following table
+
+```{r}
+df_tmp <- DF_SPECIES_ABUNDANCES %>% 
+  dplyr::select(v_TAXONMIC_RANK) %>% 
+  distinct()
+
+df_NumberOfTaxa <- data.frame(
+  domain = df_tmp$domain  %>% unique() %>% length(),
+  phylum = df_tmp$phylum  %>% unique() %>% length(),
+  class = df_tmp$class   %>% unique() %>% length(),
+  order = df_tmp$order   %>% unique() %>% length(),
+  family = df_tmp$family  %>% unique() %>% length(),
+  genus = df_tmp$genus   %>% unique() %>% length(),
+  species = df_tmp$species %>% unique() %>% length()
+) %>% pivot_longer(cols = everything(), names_to = "Taxonmic Rank", values_to = "OTUs Identified")
+
+df_NumberOfTaxa %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra()
+```
+
+
+which means that there are more species than collected samples. So which are part of the core species, which after appears during after the treatment, finally the previous state (before treatment) was recover? and what are the relevant species to follow?
+
+
+## Ranking Bacteria {.tabset}
+
+One way to order the relevance of the species is to ranked to asing a meaningful id. This id could be based on the relative abundance in normal circunstances, that means that  
+
+Considering only data from the control group and day 1 for all groups. We calculate the mean relative abundance on subjects for each species found in data
+
+```{r}
+v_TAXONMIC_RANK
+```
+
+
+```{r}
+# dplyr::filter(species == "s__Alistipes putredinis")
+
+DF_SPECIES_ABUNDANCES_Cts_DAY_1_only <- DF_SPECIES_ABUNDANCES %>% 
+  dplyr::filter(DRUG_COMPLEX == "Ct"| DAY == 1) %>%
+  # dplyr::filter(DRUG_COMPLEX == "Ct") %>%
+  # group_by(SUBJID, DAY) %>% 
+  group_by(sampleID) %>% 
+  dplyr::mutate(sum_abundance=sum(abundance)) %>% 
+  dplyr::mutate(RelAbun_SHTGN_Cts=abundance/sum_abundance) %>% 
+  ungroup()
+  
+
+# DF_SPECIES_ABUNDANCES_Cts_DAY_1_only %>% head()
+
+DF_BACTERIA_REF_SHTGN_Cts <- DF_SPECIES_ABUNDANCES_Cts_DAY_1_only %>% 
+  # dplyr::filter(DRUG_COMPLEX == "Ct") %>% 
+  group_by(domain, phylum, class, order, family, genus, species) %>% 
+  dplyr::select(RelAbun_SHTGN_Cts) %>% 
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$RelAbun_SHTGN_Cts, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data) %>% 
+  dplyr::arrange(desc(num)) %>% 
+  dplyr::mutate(rank_numSamples_SHTGN_species = seq(1, length(num))) %>% 
+  dplyr::arrange(desc(mean)) %>% 
+  dplyr::mutate(rank_RelAbun_SHTGN_species = seq(1, length(mean)))
+
+
+```
+
+### Frequency of species ranking in Cts
+
+
+```{r}
+lbl_subtitle <- "Distribution of Ct groups"
+lbl_y <- latex2exp::TeX( "$NS_s$")
+lbl_x <- "species ranked by number of Samples"
+
+DF_BACTERIA_REF_SHTGN_Cts  %>% 
+  
+  ggplot(aes(x=rank_numSamples_SHTGN_species, y=num)) +
+  # geom_boxplot( aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95, group=rank_RelAbun_SHTGN_species) ) +
+  geom_point() +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle)+
+  scale_y_log10() +
+  theme_bla
+
+```
+
+
+
+### Mean relative abundance order in Cts
+```{r}
+lbl_subtitle <- "Distribution of Ct groups"
+lbl_y <- latex2exp::TeX( "Mean $r_s$")
+lbl_x <- "species rank relative Abundance"
+
+DF_BACTERIA_REF_SHTGN_Cts  %>% 
+  ggplot(aes(x=rank_RelAbun_SHTGN_species, y=mean)) +
+  # geom_boxplot( aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95, group=rank_RelAbun_SHTGN_species) ) +
+  geom_point() +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle)+
+  scale_y_log10() +
+  theme_bla
+
+```
+
+
+
+### Mean relative abundance order vs frequency of species in Cts
+```{r}
+lbl_subtitle <- "Distribution of Ct groups"
+lbl_y <- latex2exp::TeX( "Mean $r_s$")
+lbl_x <- "species rank relative Abundance"
+
+DF_BACTERIA_REF_SHTGN_Cts  %>% 
+  
+  ggplot(aes(x=rank_RelAbun_SHTGN_species, y=num)) +
+  # geom_boxplot( aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95, group=rank_RelAbun_SHTGN_species) ) +
+  geom_point() +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle)+
+  scale_y_log10() +
+  theme_bla
+
+```
+
+
+
+### Rank comparisons
+There is no correlation between one ranking based on relative abundance and with the number of times that is found in a subject
+```{r}
+lbl_subtitle <- "Distribution of Ct groups"
+lbl_y <- latex2exp::TeX( "$NS_s$")
+lbl_x <- "species ranked by number of Samples"
+
+DF_BACTERIA_REF_SHTGN_Cts  %>% 
+  ggplot(aes(x=rank_numSamples_SHTGN_species, y=rank_RelAbun_SHTGN_species)) +
+  # geom_boxplot( aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95, group=rank_RelAbun_SHTGN_species) ) +
+  geom_point() +
+  # labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle)+
+  # scale_x_log10() +
+  # scale_y_log10() +
+  theme_bla
+```
+
+### Table of Taxas
+
+```{r}
+DF_BACTERIA_REF_SHTGN_Cts %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra() %>% 
+  flextable::merge_v( j=v_TAXONMIC_RANK ) %>% 
+  flextable::colformat_double(
+    big.mark = ",", digits = 2, na_str = "N/A"
+  )
+
+  
+```
+
+
+### Others
+
+```{r}
+
+last_rank_tmp <- DF_BACTERIA_REF_SHTGN_Cts %>% nrow() # $rank_RelAbun_SHTGN_species %>% tail(n=1)
+
+DF_BACTERIA_REF_NOinCts <- full_join(
+  DF_SPECIES_ABUNDANCES,
+  DF_BACTERIA_REF_SHTGN_Cts,
+  by=v_TAXONMIC_RANK
+) %>% 
+  dplyr::filter(is.na(rank_RelAbun_SHTGN_species)) %>% 
+  group_by(domain, phylum, class, order, family, genus, species) %>% 
+  # group_by(vars(v_TAXONMIC_RANK))  %>% 
+  dplyr::select(DRUG_COMPLEX, ACTARMCD, SUBJID, DAY, RelAbun_SHTGN ) %>%
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$RelAbun_SHTGN, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data) %>% 
+  dplyr::arrange(desc(num)) %>% 
+  dplyr::mutate(rank_numSamples_SHTGN_species = seq(1, length(num)) + last_rank_tmp ) %>% 
+  dplyr::arrange(desc(mean)) %>% 
+  dplyr::mutate(rank_RelAbun_SHTGN_species = seq(1, length(mean)) + last_rank_tmp )
+
+
+DF_BACTERIA_REF_NOinCts %>% 
+  ggplot(aes(x=rank_RelAbun_SHTGN_species, y=mean)) +
+  geom_point() +
+  scale_y_log10() +
+  theme_bla
+```
+
+
+```{r}
+
+DF_BACTERIA_REF_SHTGN <- 
+  bind_rows(
+    DF_BACTERIA_REF_SHTGN_Cts,
+    DF_BACTERIA_REF_NOinCts
+  )
+
+DF_BACTERIA_REF_SHTGN %>% 
+  ggplot(aes(x=rank_RelAbun_SHTGN_species, y=mean)) +
+  geom_point() +
+  scale_y_log10() +
+  theme_bla
+
+```
+
+
+```{r}
+# jodermacho <- paste0(v_TAXONMIC_RANK, collapse = ",")
+# 
+# DF_BACTERIA_NOinCts %>% 
+#   group_by("domain,phylum,class,order,family,genus,species")
+#   # group_by(!!jodermacho)
+#   group_by( !!expr(!!paste0(v_TAXONMIC_RANK, collapse = ",") ) ) %>% 
+#   dplyr::select(RelAbun_SHTGN ) 
+# # distinct()
+# 
+# expr(!!paste0(v_TAXONMIC_RANK, collapse = ",") )
+# 
+# xs <- rlang::exprs(1, a, -b)
+# 
+# expr(f(!!!xs, y))
+# ys <- set_names(xs, c("a", "b", "c"))
+# 
+# 
+# my_quoting_fn <- function(x) {
+#   x <- enquo(x)
+#   expr <- rlang::quo_get_expr(x)
+#   env <- rlang::quo_get_env(x)
+#   eval(expr, env)
+# }
+# 
+# # Works:
+# my_quoting_fn(toupper(letters))
+# 
+# # Fails because of a nested quosure:
+# my_quoting_fn(toupper(!!quo(letters)))
+# 
+#   
+#   !!enquo(v_TAXONMIC_RANK)
+# allvars(c("domain", "phylum"))
+  
+```
+
+
+```{r}
+DF_BACTERIA_REF_SHTGN_Cts <- DF_SPECIES_ABUNDANCES_Cts_DAY_1_only %>% 
+  # dplyr::filter(DRUG_COMPLEX == "Ct") %>% 
+  group_by(domain, phylum, class, order, family, genus, species) %>% 
+  dplyr::select(RelAbun_SHTGN_Cts) %>% 
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$RelAbun_SHTGN_Cts, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data) %>% 
+  dplyr::arrange(desc(mean)) %>% 
+  dplyr::mutate(rank_RelAbun_SHTGN_species = seq(1, length(mean)))
+```
+### {-}
+
+## {-}
+
+
+
+```{r}
+# DF_SPECIES_ABUNDANCES
+```
+
+
+
+
+
+
+```{r}
+# DF_SPECIES_ABUNDANCES
+```
+
+
+
+## Diversity Indices
+
+### Richness Index
+\begin{align}
+ R_{\text{day x}} &= \text{Number of OTUs in sample}
+\end{align}
+where x is day 1, 6 and 37
+
+### Shannon Index
+The Shannon index of a fecal sample is defined as
+\begin{align}
+  H_i &= - \sum_{j}^{R_i} r_{i,j} \ln r_{i,j}
+\end{align}
+
+where $i$ is the identifier of a subject, $R_i$ the Richness of the sample and
+$r_{i,j}$ the relative abundance of OTU $j$ in the sample of subject $i$
+
+TODO:
+The question is how to compare the shannon index between two groups
+Maybe Hutcheson t-test, wilcox, wilcox comparison to zero from baseline?
+<!-- # Hutcheson t-test. -->
+
+<!-- TODO:  -->
+```{r}
+# install.packages("ecolTest")
+# library(ecolTest)
+```
+
+
+
+<!-- # Alpha diversity -->
+
+<!-- # Beta diversity -->
+
+## By Species
+
+```{r}
+DF_SHANNON_SHTGN_species <- DF_SPECIES_ABUNDANCES %>% 
+  dplyr::mutate(DRUG_COMPLEX = factor(DRUG_COMPLEX, levels = v_DRUG_COMPLEX_levels)) %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV, SUBJID, DAY) %>% 
+  dplyr::summarise(
+    Richness = sum( ifelse(!is.na(abundance>0), 1, 0) ),
+    Shannon = H_entropy(RelAbun_SHTGN)
+  ) %>% 
+  ungroup()
+
+DF_SHANNON_SHTGN_species_stats <- DF_SHANNON_SHTGN_species %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV, DAY) %>%
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$Shannon, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data)
+
+DF_RICHNESS_SHTGN_species_stats <- DF_SHANNON_SHTGN_species %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV, DAY) %>%
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$Richness, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data)
+
+
+```
+
+
+### Richness Shotgun
+#### Difference from baseline {.tabset}
+
+```{r}
+DF_SHANNON_SHTGN_species_BASELINE <- DF_SHANNON_SHTGN_species %>% 
+  dplyr::filter(DAY == 1) %>% 
+  dplyr::mutate(Richness_Baseline = Richness) %>% 
+  dplyr::mutate(Shannon_Baseline = Shannon) %>% 
+  dplyr::select(-DAY, -Richness, -Shannon)
+
+DF_INDEXES_SHTGN_species <- DF_SHANNON_SHTGN_species %>% 
+  left_join(
+    DF_SHANNON_SHTGN_species_BASELINE,
+    by=c("DRUG_COMPLEX", "ACTARMCD", "DAV", "SUBJID")
+  ) %>% 
+  dplyr::mutate(
+    delta_Richness = Richness - Richness_Baseline,
+    delta_log_Shannon  = log(Shannon) - log(Shannon_Baseline)
+  ) %>% 
+  dplyr::mutate(
+    DAY = factor(DAY, levels = v_DAY_levels),
+    DAV = factor(DAV, levels = v_DAV_levels)
+  )
+```
+
+
+
+
+
+
+```{r}
+# DF_INDEXES_SHTGN_species %>% 
+#   ggplot(aes(x=DAY, y=delta_Richness, color=DAY, fill=DAY, shape=DAV)) +
+#   geom_point() +
+#   facet_wrap(~DRUG_COMPLEX) +
+#   scale_color_manual(values = nv_DAY_color) +
+#   scale_fill_manual(values = nv_DAY_color) +
+#   scale_shape_manual(values = nv_DAV_shape) +
+#   theme_bla
+
+```
+
+
+
+```{r}
+DF_INDEXES_SHTGN_species_delta_Richness_DAY.6_p_value <- DF_INDEXES_SHTGN_species %>% 
+  dplyr::select(DRUG_COMPLEX, ACTARMCD, DAV, SUBJID, DAY, delta_Richness) %>% 
+  pivot_wider(names_from = DAY, values_from = delta_Richness, names_prefix = "Richness_DAY.") %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV) %>% 
+  nest() %>% 
+  mutate(wc_p.value = map_dbl(data, ~wilcox.test(Richness_DAY.6 ~ 1, .)$p.value, correct=FALSE) ) %>%
+  dplyr::select(-data) %>% 
+  dplyr::mutate(sig=ifelse(wc_p.value<0.05, "*", "")) %>% 
+  dplyr::mutate(DAY = 6)
+
+DF_INDEXES_SHTGN_species_delta_Richness_DAY.37_p_value <- DF_INDEXES_SHTGN_species %>% 
+  dplyr::select(DRUG_COMPLEX, ACTARMCD, DAV, SUBJID, DAY, delta_Richness) %>% 
+  pivot_wider(names_from = DAY, values_from = delta_Richness, names_prefix = "Richness_DAY.") %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV) %>% 
+  nest() %>% 
+  mutate(wc_p.value = map_dbl(data, ~wilcox.test(Richness_DAY.37 ~ 1, .)$p.value, correct=FALSE) ) %>%
+  dplyr::select(-data) %>% 
+  dplyr::mutate(sig=ifelse(wc_p.value<0.05, "*", "")) %>% 
+  dplyr::mutate(DAY = 37)
+
+DF_INDEXES_SHTGN_species_delta_Richness_p_value <- bind_rows(
+  DF_INDEXES_SHTGN_species_delta_Richness_DAY.6_p_value,
+  DF_INDEXES_SHTGN_species_delta_Richness_DAY.37_p_value
+) %>% 
+  dplyr::mutate(param="delta_Richness")
+
+
+# delta_log_Shannon
+# DF_INDEXES_SHTGN_species_delta_Richness_p_value
+
+```
+
+
+```{r}
+DF_INDEXES_SHTGN_species_delta_log_Shannon_DAY.6_p_value <- DF_INDEXES_SHTGN_species %>% 
+  dplyr::select(DRUG_COMPLEX, ACTARMCD, DAV, SUBJID, DAY, delta_log_Shannon) %>% 
+  pivot_wider(names_from = DAY, values_from = delta_log_Shannon, names_prefix = "Richness_DAY.") %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV) %>% 
+  nest() %>% 
+  mutate(wc_p.value = map_dbl(data, ~wilcox.test(Richness_DAY.6 ~ 1, .)$p.value, correct=FALSE) ) %>%
+  dplyr::select(-data) %>% 
+  dplyr::mutate(sig=ifelse(wc_p.value<0.05, "*", "")) %>% 
+  dplyr::mutate(DAY = 6)
+
+DF_INDEXES_SHTGN_species_delta_log_Shannon_DAY.37_p_value <- DF_INDEXES_SHTGN_species %>% 
+  dplyr::select(DRUG_COMPLEX, ACTARMCD, DAV, SUBJID, DAY, delta_log_Shannon) %>% 
+  pivot_wider(names_from = DAY, values_from = delta_log_Shannon, names_prefix = "Richness_DAY.") %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV) %>% 
+  nest() %>% 
+  mutate(wc_p.value = map_dbl(data, ~wilcox.test(Richness_DAY.37 ~ 1, .)$p.value, correct=FALSE) ) %>%
+  dplyr::select(-data) %>% 
+  dplyr::mutate(sig=ifelse(wc_p.value<0.05, "*", "")) %>% 
+  dplyr::mutate(DAY = 37)
+
+DF_INDEXES_SHTGN_species_delta_log_Shannon_p_value <- bind_rows(
+  DF_INDEXES_SHTGN_species_delta_log_Shannon_DAY.6_p_value,
+  DF_INDEXES_SHTGN_species_delta_log_Shannon_DAY.37_p_value
+) %>% 
+  dplyr::mutate(param="delta_log_Shannon")
+```
+
+
+
+```{r}
+DF_INDEXES_SHTGN_species_p_value <- bind_rows(
+  DF_INDEXES_SHTGN_species_delta_Richness_p_value,
+  DF_INDEXES_SHTGN_species_delta_log_Shannon_p_value
+)
+
+```
+
+
+
+
+
+```{r}
+DF_INDEXES_SHTGN_species_Stats_delta_Richness <- DF_INDEXES_SHTGN_species %>% 
+  dplyr::select(DRUG_COMPLEX, ACTARMCD, DAV, SUBJID, DAY, delta_Richness) %>% 
+  dplyr::group_by(DRUG_COMPLEX, ACTARMCD, DAV, DAY) %>% 
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$delta_Richness, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data) %>% 
+  dplyr::mutate(param="delta_Richness")
+
+
+DF_INDEXES_SHTGN_species_Stats_delta_log_Shannon <- DF_INDEXES_SHTGN_species %>% 
+  dplyr::select(DRUG_COMPLEX, ACTARMCD, DAV, SUBJID, DAY, delta_log_Shannon) %>% 
+  dplyr::group_by(DRUG_COMPLEX, ACTARMCD, DAV, DAY) %>% 
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$delta_log_Shannon, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data) %>% 
+  dplyr::mutate(param="delta_log_Shannon")
+
+# DF_INDEXES_SHTGN_species_Stats
+DF_INDEXES_SHTGN_species_Stats <- bind_rows(
+  DF_INDEXES_SHTGN_species_Stats_delta_Richness,
+  DF_INDEXES_SHTGN_species_Stats_delta_log_Shannon
+) %>% 
+  dplyr::filter(DAY != 1)
+
+
+DF_INDEXES_SHTGN_species_Summary <- full_join(
+  DF_INDEXES_SHTGN_species_p_value %>% dplyr::mutate(DAY=factor(as.integer(DAY), levels = v_DAY_levels)),
+  DF_INDEXES_SHTGN_species_Stats,
+  by=c("DRUG_COMPLEX", "ACTARMCD", "DAV", "DAY", "param")
+) %>% 
+  ungroup()
+
+df_y_position_TMP <- DF_INDEXES_SHTGN_species_Summary %>% 
+  dplyr::select(param, DRUG_COMPLEX, ACTARMCD, DAV, DAY, max) %>% 
+  group_by(param, DRUG_COMPLEX, ACTARMCD) %>% 
+  dplyr::summarise(y_position=1.1*max(max))
+
+DF_INDEXES_SHTGN_species_Summary <- DF_INDEXES_SHTGN_species_Summary %>% 
+  left_join(
+    df_y_position_TMP,
+    by=c("param", "DRUG_COMPLEX", "ACTARMCD")
+  )
+```
+
+
+##### Change Richness from Baseline plot NO DAV
+
+The change of Richness from baseline defined as
+\begin{align}
+ \Delta R_x &= R_{\text{day x}} - R_{\text{day 1}}
+\end{align}
+where x is day 6 and 37
+
+
+
+```{r}
+library(ggsignif)
+
+# DF_INDEXES_SHTGN_species
+
+
+DF_INDEXES_SHTGN_species_Summary_TMP <- DF_INDEXES_SHTGN_species_Summary %>% 
+  dplyr::filter(param=="delta_Richness") %>% 
+  dplyr::filter(DAV == "NODAV")
+
+lbl_x <- "time (day)"
+lbl_y <- latex2exp::TeX(" $\\Delta$ Richness ")
+lbl_subtitle <- "NO DAV"
+
+DF_INDEXES_SHTGN_species_Summary_TMP %>% 
+  ggplot(aes(x=DAY, fill=DAY)) +
+  geom_boxplot(stat="identity", aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95), alpha = 0.5) +
+  geom_text(aes(label=sig, y=max), size=10) +
+  geom_jitter(
+    data = DF_INDEXES_SHTGN_species %>% dplyr::filter(DAV == "NODAV", DAY !=1),
+    aes(x=DAY, y=delta_Richness),
+    alpha = 0.5
+    ) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  facet_wrap(~DRUG_COMPLEX) +
+  scale_fill_manual(values = nv_DAY_color) +
+  theme_bla
+
+```
+
+
+```{r}
+# DF_INDEXES_SHTGN_species_Summary %>% 
+#   dplyr::filter(DAV == "NODAV") %>% 
+#   dplyr::filter(param == "delta_Richness") %>% 
+#   dplyr::select(-ACTARMCD, -DAV) %>% 
+#   dplyr::select(param, everything()) %>% 
+#   dplyr::select(-y_position) %>% 
+#   dplyr::mutate(num=as.integer(num)) %>% 
+#   dplyr::mutate(wc_p.value=sprintf("%g", wc_p.value)) %>% 
+#   flextable::flextable() %>% 
+#   flextable::theme_zebra() %>% 
+#   flextable::merge_v(j=c("param", "DRUG_COMPLEX", "ACTARMCD", "DAV")) %>% 
+#   flextable::colformat_double(big.mark = ",", digits = 2, na_str = "" )
+
+```
+
+```{r}
+DF_INDEXES_SHTGN_species_Summary %>% 
+  # dplyr::filter(sig == "*") %>% 
+  dplyr::filter(param == "delta_Richness") %>% 
+  dplyr::filter(DAV == "NODAV") %>% 
+  dplyr::arrange(DRUG_COMPLEX) %>% 
+  dplyr::select(DRUG_COMPLEX, DAY, sig, q50, min, max, num) %>% 
+  dplyr::mutate(
+    q50=signif(q50, digits = 3),
+    min=signif(min, digits = 3),
+    max=signif(max, digits = 3),
+    num=as.integer(num)
+    ) %>% 
+  dplyr::mutate(Delta_Richness_med_min_max=paste0(q50, " [", min, ", ", max, "]") ) %>% 
+  # dplyr::rename("Num.Subjects"="num") %>% 
+  dplyr::select(-q50, -min, -max) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra() %>% 
+  flextable::merge_v(j=c("param", "DRUG_COMPLEX", "ACTARMCD", "DAV")) %>% 
+  flextable::colformat_double(big.mark = ",", digits = 2, na_str = "" ) %>% 
+  flextable::set_header_labels(
+    values = list(num = "Number of Subjects", sig="Significant")
+    )
+  # flextable::set_header_labels(
+  #   values = list(Delta_Richness_med_min_max = "Delta Richness med [min, max]")
+  #   )
+```
+
+
+The groups without DAV that are significant are CRO at day 6 with a decay of -18 [-41, 18] in Richness, ...
+
+##### Change from Baseline Table
+
+
+```{r}
+DF_INDEXES_SHTGN_species_Summary %>% 
+  dplyr::select(param, everything()) %>% 
+  dplyr::select(-y_position) %>% 
+  dplyr::mutate(num=as.integer(num)) %>% 
+  dplyr::mutate(wc_p.value=sprintf("%g", wc_p.value)) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra() %>% 
+  flextable::merge_v(j=c("param", "DRUG_COMPLEX", "ACTARMCD", "DAV")) %>% 
+  flextable::colformat_double(big.mark = ",", digits = 2, na_str = "" )
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+<!-- ##### {-} -->
+
+
+
+##### Delta log Shannon from Baseline
+
+
+```{r}
+DF_INDEXES_SHTGN_species_Summary %>% 
+  dplyr::filter(param=="delta_log_Shannon") %>% 
+  dplyr::filter(DAV == "NODAV") %>% 
+  ggplot(aes(x=DAY, ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95)) +
+  geom_boxplot(stat="identity") +
+  facet_wrap(~DRUG_COMPLEX) +
+  theme_bla
+
+```
+
+#### {-}
+#### Shannon vs Richness {.tabset}
+
+
+```{r}
+DF_INDEXES_SHTGN_species %>% 
+  ggplot(aes(x=delta_Richness, y=delta_log_Shannon, color=DAY, fill=DAY, shape=DAV)) +
+  geom_point() +
+  facet_wrap(~DRUG_COMPLEX) +
+  scale_color_manual(values = nv_DAY_color) +
+  scale_fill_manual(values = nv_DAY_color) +
+  scale_shape_manual(values = nv_DAV_shape) +
+  theme_bla
+
+```
+
+
+
+```{r}
+DF_SHANNON_SHTGN_species %>% 
+  dplyr::mutate(DAY=factor(DAY, levels=v_DAY_levels)) %>% 
+  dplyr::mutate(DAV=factor(DAV, levels=v_DAV_levels)) %>% 
+  ggplot(aes(x=Richness, y=Shannon, shape=DAV, color=DAY )) +
+  geom_point(size=2, aes(fill=DAY))+
+  geom_function(fun = ~log(.x), linetype = "dashed") +
+  facet_wrap(~DRUG_COMPLEX) +
+  scale_color_manual(values = nv_DAY_color) +
+  scale_fill_manual(values = nv_DAY_color) +
+  scale_shape_manual(values = nv_DAV_shape) +
+  # scale_x_log10() +
+  theme_bla
+
+```
+
+
+
+
+
+
+
+
+### Richness {.tabset}
+
+
+#### Histogram
+For all subjects
+
+```{r}
+DF_SHANNON_SHTGN_species %>% 
+  ggplot(aes(x=Richness, fill=as.factor(DAY) )) +
+  geom_histogram() +
+  theme_bla
+```
+
+
+#### Histogram by groups
+
+
+```{r}
+DF_SHANNON_SHTGN_species %>% 
+  ggplot(aes(x=Richness, fill=as.factor(DAY) )) +
+  geom_histogram() +
+  facet_grid(DRUG_COMPLEX~DAV) +
+  theme_bla
+```
+
+
+
+
+
+
+#### {-}
+
+### {-}
+
+
+### Shannon {.tabset}
+
+#### Histogram
+
+For all subjects in study
+
+```{r}
+DF_SHANNON_SHTGN_species %>% 
+  ggplot(aes(x=Shannon, fill=as.factor(DAY) )) +
+  geom_histogram() +
+  theme_bla
+```
+
+
+#### Histogram by groups
+
+```{r}
+DF_SHANNON_SHTGN_species %>% 
+  ggplot(aes(x=Shannon, fill=as.factor(DAY) )) +
+  geom_histogram() +
+  facet_grid(DRUG_COMPLEX~DAV) +
+  theme_bla
+```
+
+### Comments about Shannon index
+
+Why there is a zero or almost zero shannon index, a shannon index zero means that there is no surprise no diversity the majority of species is concentrated in very few species (~1).
+So lets take an example of one subject with a small shannon index with a shannon index $< 0.01$
+
+
+```{r}
+DF_SHANNON_SHTGN_species %>% 
+  dplyr::filter(Shannon <0.01) %>% 
+  flextable::flextable()
+
+
+```
+
+#### Subject with an almost zero shannon index
+This subject is part of the control group, so no AB effect
+
+```{r, fig.width = 18, fig.height = 10}
+str_SUBJID <- "10004"
+lbl_subtitle <- sprintf("SUBJID = %s", str_SUBJID)
+
+df_table_2_ggplot_tmp <- DF_SHANNON_SHTGN_species %>% 
+  dplyr::filter(SUBJID == str_SUBJID) %>% 
+  dplyr::select(DAY, Richness, Shannon) %>% 
+  dplyr::mutate(Shannon = signif(Shannon, digits = 4)) %>% 
+  dplyr::mutate(log_Richness = signif(log(Richness), digits = 4) )
+
+DF_SPECIES_ABUNDANCES %>% dplyr::filter(SUBJID == str_SUBJID) %>% 
+  ggplot(aes(x=species, y=RelAbun_SHTGN, color=as.factor(DAY), shape=as.factor(DAY) ))+
+  geom_point(size=3) +
+  # geom_hline(
+  #   data = DF_SHANNON_SHTGN_species %>% dplyr::filter(SUBJID == str_SUBJID) %>% dplyr::mutate(log_Richness=log(Richness)),
+  #   aes(yintercept = log_Richness, color=as.factor(DAY) ), 
+  #   linetype="dotted"
+  #   ) +
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+                labels = scales::trans_format("log10", scales::math_format(10^.x)) ) +
+  coord_cartesian(
+    ylim = c(1e-7, 1)
+  ) +
+  annotation_custom(gridExtra::tableGrob(df_table_2_ggplot_tmp), xmin=70, xmax=90, ymin=-2, ymax=-0.5) +
+  labs(subtitle = lbl_subtitle) +
+  theme_bla +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+
+
+#### Subject with a very high shannon index
+This subject is part of the control group, so no AB effect
+```{r, fig.width = 18, fig.height = 10}
+str_SUBJID <- "10131"
+lbl_subtitle <- sprintf("SUBJID = %s", str_SUBJID)
+
+df_table_2_ggplot_tmp <- DF_SHANNON_SHTGN_species %>% 
+  dplyr::filter(SUBJID == str_SUBJID) %>% 
+  dplyr::select(DAY, Richness, Shannon) %>% 
+  dplyr::mutate(Shannon = signif(Shannon, digits = 4)) %>% 
+  dplyr::mutate(log_Richness = signif(log(Richness), digits = 4) )
+
+
+DF_SPECIES_ABUNDANCES %>% dplyr::filter(SUBJID == str_SUBJID) %>% 
+  ggplot(aes(x=species, y=RelAbun_SHTGN, color=as.factor(DAY), shape=as.factor(DAY) ))+
+  geom_point(size=3) +
+  # geom_hline(
+  #   data = DF_SHANNON_SHTGN_species %>% dplyr::filter(SUBJID == str_SUBJID) %>% dplyr::mutate(log_Richness=log(Richness)),
+  #   aes(yintercept = log_Richness, color=as.factor(DAY) ), 
+  #   linetype="dotted"
+  #   ) +
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+                labels = scales::trans_format("log10", scales::math_format(10^.x)) ) +
+  coord_cartesian(
+    ylim = c(1e-7, 1)
+  ) +
+  annotation_custom(gridExtra::tableGrob(df_table_2_ggplot_tmp), xmin=60, xmax=80, ymin=-6, ymax=-4) +
+  labs(subtitle = lbl_subtitle) +
+  theme_bla +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+
+## Indices comparsions Wilcox test
+
+
+```{r}
+col_compare_1 <- "Shannon_DAY.1"
+col_compare_2 <- "Shannon_DAY.6"
+# res <- wilcox.test(data.str_col[[ col_compare_1 ]], data.str_col[[ col_compare_2 ]], correct=FALSE)
+
+df_Shannon.p_value.d1_d6 <- DF_SHANNON_SHTGN_species %>% 
+  dplyr::select(-Richness) %>% 
+  pivot_wider(names_from = DAY, values_from = Shannon, names_prefix = "Shannon_DAY.") %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV) %>% 
+  summarise(
+    p_value = wilcox.test(get(col_compare_1), get(col_compare_2), correct=FALSE)$p.value
+    ) %>% 
+  dplyr::mutate(Index="Shannon") %>% 
+  dplyr::mutate(
+    days="1_6"
+  ) %>% 
+  ungroup()
+
+
+col_compare_1 <- "Shannon_DAY.6"
+col_compare_2 <- "Shannon_DAY.37"
+# res <- wilcox.test(data.str_col[[ col_compare_1 ]], data.str_col[[ col_compare_2 ]], correct=FALSE)
+
+df_Shannon.p_value.d6_d37 <- DF_SHANNON_SHTGN_species %>% 
+  dplyr::select(-Richness) %>% 
+  pivot_wider(names_from = DAY, values_from = Shannon, names_prefix = "Shannon_DAY.") %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV) %>% 
+  summarise(
+    p_value = wilcox.test(get(col_compare_1), get(col_compare_2), correct=FALSE)$p.value
+    ) %>% 
+  dplyr::mutate(Index="Shannon") %>% 
+  dplyr::mutate(
+    days="6_37"
+  ) %>% 
+  ungroup()
+
+col_compare_1 <- "Shannon_DAY.37"
+col_compare_2 <- "Shannon_DAY.1"
+# res <- wilcox.test(data.str_col[[ col_compare_1 ]], data.str_col[[ col_compare_2 ]], correct=FALSE)
+
+df_Shannon.p_value.d37_d1 <- DF_SHANNON_SHTGN_species %>% 
+  dplyr::select(-Richness) %>% 
+  pivot_wider(names_from = DAY, values_from = Shannon, names_prefix = "Shannon_DAY.") %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV) %>% 
+  summarise(
+    p_value = wilcox.test(get(col_compare_1), get(col_compare_2), correct=FALSE)$p.value
+    ) %>% 
+  dplyr::mutate(Index="Shannon") %>% 
+  dplyr::mutate(
+    days="37_1"
+  ) %>% 
+  ungroup()
+
+
+df_Shannon.p_value <- bind_rows(
+  list(df_Shannon.p_value.d1_d6, df_Shannon.p_value.d6_d37, df_Shannon.p_value.d37_d1)
+)
+
+```
+
+
+
+
+```{r}
+col_compare_1 <- "Richness_DAY.1"
+col_compare_2 <- "Richness_DAY.6"
+# res <- wilcox.test(data.str_col[[ col_compare_1 ]], data.str_col[[ col_compare_2 ]], correct=FALSE)
+
+df_Richness.p_value.d1_d6 <- DF_SHANNON_SHTGN_species %>% 
+  dplyr::select(-Shannon) %>% 
+  pivot_wider(names_from = DAY, values_from = Richness, names_prefix = "Richness_DAY.") %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV) %>% 
+  summarise(
+    p_value = wilcox.test(get(col_compare_1), get(col_compare_2), correct=FALSE)$p.value
+    ) %>% 
+  dplyr::mutate(Index="Richness") %>% 
+  dplyr::mutate(
+    days="1_6"
+  ) %>% 
+  ungroup()
+
+
+col_compare_1 <- "Richness_DAY.6"
+col_compare_2 <- "Richness_DAY.37"
+# res <- wilcox.test(data.str_col[[ col_compare_1 ]], data.str_col[[ col_compare_2 ]], correct=FALSE)
+
+df_Richness.p_value.d6_d37 <- DF_SHANNON_SHTGN_species %>% 
+  dplyr::select(-Shannon) %>% 
+  pivot_wider(names_from = DAY, values_from = Richness, names_prefix = "Richness_DAY.") %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV) %>% 
+  summarise(
+    p_value = wilcox.test(get(col_compare_1), get(col_compare_2), correct=FALSE)$p.value
+    ) %>% 
+  dplyr::mutate(Index="Richness") %>% 
+  dplyr::mutate(
+    days="6_37"
+  ) %>% 
+  ungroup()
+
+col_compare_1 <- "Richness_DAY.37"
+col_compare_2 <- "Richness_DAY.1"
+# res <- wilcox.test(data.str_col[[ col_compare_1 ]], data.str_col[[ col_compare_2 ]], correct=FALSE)
+
+df_Richness.p_value.d37_d1 <- DF_SHANNON_SHTGN_species %>% 
+  dplyr::select(-Shannon) %>% 
+  pivot_wider(names_from = DAY, values_from = Richness, names_prefix = "Richness_DAY.") %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV) %>% 
+  summarise(
+    p_value = wilcox.test(get(col_compare_1), get(col_compare_2), correct=FALSE)$p.value
+    ) %>% 
+  dplyr::mutate(Index="Richness") %>% 
+  dplyr::mutate(
+    days="37_1"
+  ) %>% 
+  ungroup()
+
+
+df_Richness.p_value <- bind_rows(
+  list(df_Richness.p_value.d1_d6, df_Richness.p_value.d6_d37, df_Richness.p_value.d37_d1)
+)
+```
+
+
+
+### Shannon {.tabset}
+
+#### Time Change plot
+
+```{r}
+str_TAXA_RANK_TMP <- "species"
+str_DAV_TMP <- "NODAV"
+lbl_subtitle <- sprintf("Taxonomic rank: %s, %s", str_TAXA_RANK_TMP, str_DAV_TMP)
+lbl_y <- "Shannon Index"
+lbl_x <- "time (days)"
+DF_SHANNON_SHTGN_species %>% 
+  dplyr::filter(DAV == "NODAV") %>% 
+  ggplot(aes(x=DAY, y=Shannon)) +
+  geom_point(aes(group=SUBJID), alpha=0.25) +
+  geom_line (aes(group=SUBJID), alpha=0.25) +
+  # geom_line (aes(y=log(Richness)), color ="red")  +
+  geom_line(
+    data=DF_SHANNON_SHTGN_species_stats %>% dplyr::filter(DAV == str_DAV_TMP), 
+    aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95, y=q50), 
+    color="red",
+    size = 1.25
+    ) +
+  facet_wrap(~DRUG_COMPLEX) +
+  labs(
+    x=lbl_x, y=lbl_y, subtitle = lbl_subtitle
+  ) +
+  scale_x_continuous(breaks = DF_SHANNON_SHTGN_species %>% pull(DAY) %>% unique()) +
+  theme_bla
+```
+
+
+#### Shannon Index Stats
+
+```{r}
+DF_SHANNON_SHTGN_species_stats %>% 
+  # dplyr::mutate(across(c("q05", "q25", "q50", "q75", "q95", "mean", "sd", "min", "max")), function (x) signif(x, digits = 3)) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra() %>% 
+  flextable::merge_v( j=c("DRUG_COMPLEX", "ACTARMCD", "DAV")) %>% 
+  flextable::colformat_double(
+    big.mark = ",", digits = 2, na_str = "N/A"
+  )
+
+```
+
+
+#### Shannon Wilcox comparison (p.value)
+
+Calculate p.value between groups and add it to plot
+
+
+```{r}
+df_Shannon.p_value_pw <- df_Shannon.p_value %>% 
+  # dplyr::mutate(p_value=signif(p_value, digits = 4)) %>%
+  dplyr::select(-ACTARMCD) %>% 
+  pivot_wider(names_from = DAV, values_from = p_value) %>% 
+  dplyr::arrange(DRUG_COMPLEX)
+
+df_Shannon.p_value_pw %>% 
+  dplyr::select(Index, everything()) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra() %>% 
+  flextable::merge_v(j=c("Index", "DRUG_COMPLEX")) %>% 
+  flextable::colformat_double(
+    big.mark = "", digits = 5, na_str = ""
+  )
+```
+
+
+
+
+#### Shannon Index Comparisons between Beta-lactam groups
+Shannon index for different groups
+
+```{r, fig.width = 12, fig.height = 8}
+library(ggsignif)
+nv_days_y_position_tmp <- c("1_6"=4, "6_37"=5, "37_1"=6)
+df_Shannon_tmp <- df_Shannon.p_value %>% 
+  dplyr::filter(p_value<=0.05) %>% 
+  dplyr::mutate(p_value = sprintf("%g", signif(p_value, digits = 4))) %>% 
+  dplyr::mutate(dayA=as.factor( as.integer(str_split_i(days, "_", 1) ) ) ) %>% 
+  dplyr::mutate(dayB=as.factor( as.integer(str_split_i(days, "_", 2) ) ) ) %>% 
+  dplyr::mutate(y_position=nv_days_y_position_tmp[days]) %>% 
+  dplyr::filter(DAV == "NODAV")
+
+DF_SHANNON_SHTGN_species %>% 
+  dplyr::filter(DAV == "NODAV") %>% 
+  dplyr::mutate(DAY=as.factor(DAY)) %>% 
+  ggplot(aes(x=DAY, y=Shannon, group=DAY)) +
+  geom_violin() +
+  geom_boxplot() +
+  geom_point() +
+  geom_signif(
+    data = df_Shannon_tmp,
+    aes(
+      annotations=p_value,
+      y_position=y_position,
+      xmin=dayA,
+      xmax=dayB
+    ),
+    tip_length = 0.05,
+    inherit.aes = FALSE,
+    manual = TRUE
+  ) +
+  facet_wrap(~DRUG_COMPLEX) +
+  theme_bla
+  # group_by(DRUG_COMPLEX, DAV)
+```
+
+
+### {-}
+
+
+### Richness {.tabset}
+
+```{r}
+# df_Richness.p_value %>% 
+#   dplyr::mutate(p_value=signif(p_value, digits = 4))
+
+```
+
+
+#### Time Change plot
+
+```{r}
+str_TAXA_RANK_TMP <- "species"
+str_DAV_TMP <- "NODAV"
+lbl_subtitle <- sprintf("Taxonomic rank: %s, %s", str_TAXA_RANK_TMP, str_DAV_TMP)
+lbl_y <- "Richness Index"
+lbl_x <- "time (days)"
+
+DF_SHANNON_SHTGN_species %>% 
+  dplyr::filter(DAV == "NODAV") %>% 
+  ggplot(aes(x=DAY, y=Richness)) +
+  geom_point(aes(group=SUBJID), alpha=0.25) +
+  geom_line (aes(group=SUBJID), alpha=0.25) +
+  # geom_line (aes(y=log(Richness)), color ="red")  +
+  geom_line(
+    data=DF_RICHNESS_SHTGN_species_stats %>% dplyr::filter(DAV == str_DAV_TMP), 
+    aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95, y=q50), 
+    color="red",
+    size = 1.25
+    ) +
+  facet_wrap(~DRUG_COMPLEX) +
+  labs(
+    x=lbl_x, y=lbl_y, subtitle = lbl_subtitle
+  ) +
+  scale_x_continuous(breaks = DF_SHANNON_SHTGN_species %>% pull(DAY) %>% unique()) +
+  theme_bla
+```
+
+
+
+#### Richness Index Stats
+
+```{r}
+DF_RICHNESS_SHTGN_species_stats %>% 
+  # dplyr::mutate(across(c("q05", "q25", "q50", "q75", "q95", "mean", "sd", "min", "max")), function (x) signif(x, digits = 3)) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra() %>% 
+  flextable::merge_v( j=c("DRUG_COMPLEX", "ACTARMCD", "DAV")) %>% 
+  flextable::colformat_double(
+    big.mark = ",", digits = 2, na_str = "N/A"
+  )
+
+```
+
+
+
+#### Richness Wilcox comparison (p.value)
+
+Calculate p.value between groups and add it to plot
+
+
+```{r}
+df_Richness.p_value_pw <- df_Richness.p_value %>% 
+  # dplyr::mutate(p_value=signif(p_value, digits = 4)) %>%
+  dplyr::select(-ACTARMCD) %>% 
+  pivot_wider(names_from = DAV, values_from = p_value) %>% 
+  dplyr::arrange(DRUG_COMPLEX)
+
+df_Richness.p_value_pw %>% 
+  dplyr::select(Index, everything()) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra() %>% 
+  flextable::merge_v(j=c("Index", "DRUG_COMPLEX")) %>% 
+  flextable::colformat_double(
+    big.mark = "", digits = 5, na_str = ""
+  )
+```
+
+
+
+
+
+#### Richness Index Comparisons between Beta-lactam groups
+Richness index for different groups
+
+```{r, fig.width = 12, fig.height = 8}
+library(ggsignif)
+nv_days_y_position_tmp <- c("1_6"=80, "6_37"=90, "37_1"=100)
+df_Richness_tmp <- df_Richness.p_value %>% 
+  dplyr::filter(p_value<=0.05) %>% 
+  dplyr::mutate(p_value = sprintf("%g", signif(p_value, digits = 4))) %>% 
+  dplyr::mutate(dayA=as.factor( as.integer(str_split_i(days, "_", 1) ) ) ) %>% 
+  dplyr::mutate(dayB=as.factor( as.integer(str_split_i(days, "_", 2) ) ) ) %>% 
+  dplyr::mutate(y_position=nv_days_y_position_tmp[days]) %>% 
+  dplyr::filter(DAV == "NODAV")
+
+DF_SHANNON_SHTGN_species %>% 
+  dplyr::filter(DAV == "NODAV") %>% 
+  dplyr::mutate(DAY=as.factor(DAY)) %>% 
+  ggplot(aes(x=DAY, y=Richness, group=DAY)) +
+  geom_violin() +
+  geom_boxplot() +
+  geom_point() +
+  geom_signif(
+    data = df_Richness_tmp,
+    aes(
+      annotations=p_value,
+      y_position=y_position,
+      xmin=dayA,
+      xmax=dayB
+    ),
+    tip_length = 0.05,
+    inherit.aes = FALSE,
+    manual = TRUE
+  ) +
+  facet_wrap(~DRUG_COMPLEX) +
+  theme_bla
+  # group_by(DRUG_COMPLEX, DAV)
+```
+
+
+#### {-}
+
+### {-}
+
+
+## By Family {.tabset}
+
+
+```{r}
+# DF_SPECIES_ABUNDANCES %>% colnames()
+```
+
+```{r}
+DF_FAMILY_ABUNDANCES <- DF_SPECIES_ABUNDANCES %>% 
+  group_by(domain, phylum, class, order, family, sampleID, DRUG_COMPLEX, ACTARMCD, DAV, SUBJID, DAY) %>% 
+  summarise(
+    abundance = sum(abundance),
+    sum_abundance = sum(sum_abundance),
+    RelAbun_SHTGN = sum(RelAbun_SHTGN)
+    )
+
+DF_SHANNON_SHTGN_family <- DF_FAMILY_ABUNDANCES %>% 
+  dplyr::mutate(DRUG_COMPLEX = factor(DRUG_COMPLEX, levels = v_DRUG_COMPLEX_levels)) %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV, SUBJID, DAY) %>% 
+  dplyr::summarise(
+    Richness = sum( ifelse(!is.na(abundance>0), 1, 0) ),
+    Shannon = H_entropy(RelAbun_SHTGN)
+  ) %>% 
+  ungroup()
+
+
+DF_SHANNON_SHTGN_family_stats <- DF_SHANNON_SHTGN_family %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV, DAY) %>%
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$Shannon, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data)
+
+DF_RICHNESS_SHTGN_family_stats <- DF_SHANNON_SHTGN_family %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV, DAY) %>%
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$Richness, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data)
+
+
+
+
+```
+
+
+
+### Richness Shotgun
+#### Difference from baseline {.tabset}
+
+```{r}
+DF_SHANNON_SHTGN_family_BASELINE <- DF_SHANNON_SHTGN_family %>% 
+  dplyr::filter(DAY == 1) %>% 
+  dplyr::mutate(Richness_Baseline = Richness) %>% 
+  dplyr::mutate(Shannon_Baseline = Shannon) %>% 
+  dplyr::select(-DAY, -Richness, -Shannon)
+
+
+DF_INDEXES_SHTGN_family <- DF_SHANNON_SHTGN_family %>% 
+  left_join(
+    DF_SHANNON_SHTGN_family_BASELINE,
+    by=c("DRUG_COMPLEX", "ACTARMCD", "DAV", "SUBJID")
+  ) %>% 
+  dplyr::mutate(
+    delta_Richness = Richness - Richness_Baseline,
+    delta_log_Shannon  = log(Shannon) - log(Shannon_Baseline)
+  ) %>% 
+  dplyr::mutate(
+    DAY = factor(DAY, levels = v_DAY_levels),
+    DAV = factor(DAV, levels = v_DAV_levels)
+  )
+```
+
+
+
+
+```{r}
+DF_INDEXES_SHTGN_family_delta_Richness_DAY.6_p_value <- DF_INDEXES_SHTGN_family %>% 
+  dplyr::select(DRUG_COMPLEX, ACTARMCD, DAV, SUBJID, DAY, delta_Richness) %>% 
+  pivot_wider(names_from = DAY, values_from = delta_Richness, names_prefix = "Richness_DAY.") %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV) %>% 
+  nest() %>% 
+  mutate(wc_p.value = map_dbl(data, ~wilcox.test(Richness_DAY.6 ~ 1, .)$p.value, correct=FALSE) ) %>%
+  dplyr::select(-data) %>% 
+  dplyr::mutate(sig=ifelse(wc_p.value<0.05, "*", "")) %>% 
+  dplyr::mutate(DAY = 6)
+
+DF_INDEXES_SHTGN_family_delta_Richness_DAY.37_p_value <- DF_INDEXES_SHTGN_family %>% 
+  dplyr::select(DRUG_COMPLEX, ACTARMCD, DAV, SUBJID, DAY, delta_Richness) %>% 
+  pivot_wider(names_from = DAY, values_from = delta_Richness, names_prefix = "Richness_DAY.") %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV) %>% 
+  nest() %>% 
+  mutate(wc_p.value = map_dbl(data, ~wilcox.test(Richness_DAY.37 ~ 1, .)$p.value, correct=FALSE) ) %>%
+  dplyr::select(-data) %>% 
+  dplyr::mutate(sig=ifelse(wc_p.value<0.05, "*", "")) %>% 
+  dplyr::mutate(DAY = 37)
+
+DF_INDEXES_SHTGN_family_delta_Richness_p_value <- bind_rows(
+  DF_INDEXES_SHTGN_family_delta_Richness_DAY.6_p_value,
+  DF_INDEXES_SHTGN_family_delta_Richness_DAY.37_p_value
+) %>% 
+  dplyr::mutate(param="delta_Richness")
+
+
+# delta_log_Shannon
+# DF_INDEXES_SHTGN_family_delta_Richness_p_value
+
+```
+
+
+
+
+```{r}
+DF_INDEXES_SHTGN_family_delta_log_Shannon_DAY.6_p_value <- DF_INDEXES_SHTGN_family %>% 
+  dplyr::select(DRUG_COMPLEX, ACTARMCD, DAV, SUBJID, DAY, delta_log_Shannon) %>% 
+  pivot_wider(names_from = DAY, values_from = delta_log_Shannon, names_prefix = "Richness_DAY.") %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV) %>% 
+  nest() %>% 
+  mutate(wc_p.value = map_dbl(data, ~wilcox.test(Richness_DAY.6 ~ 1, .)$p.value, correct=FALSE) ) %>%
+  dplyr::select(-data) %>% 
+  dplyr::mutate(sig=ifelse(wc_p.value<0.05, "*", "")) %>% 
+  dplyr::mutate(DAY = 6)
+
+DF_INDEXES_SHTGN_family_delta_log_Shannon_DAY.37_p_value <- DF_INDEXES_SHTGN_family %>% 
+  dplyr::select(DRUG_COMPLEX, ACTARMCD, DAV, SUBJID, DAY, delta_log_Shannon) %>% 
+  pivot_wider(names_from = DAY, values_from = delta_log_Shannon, names_prefix = "Richness_DAY.") %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV) %>% 
+  nest() %>% 
+  mutate(wc_p.value = map_dbl(data, ~wilcox.test(Richness_DAY.37 ~ 1, .)$p.value, correct=FALSE) ) %>%
+  dplyr::select(-data) %>% 
+  dplyr::mutate(sig=ifelse(wc_p.value<0.05, "*", "")) %>% 
+  dplyr::mutate(DAY = 37)
+
+DF_INDEXES_SHTGN_family_delta_log_Shannon_p_value <- bind_rows(
+  DF_INDEXES_SHTGN_family_delta_log_Shannon_DAY.6_p_value,
+  DF_INDEXES_SHTGN_family_delta_log_Shannon_DAY.37_p_value
+) %>% 
+  dplyr::mutate(param="delta_log_Shannon")
+```
+
+
+
+
+```{r}
+DF_INDEXES_SHTGN_family_p_value <- bind_rows(
+  DF_INDEXES_SHTGN_family_delta_Richness_p_value,
+  DF_INDEXES_SHTGN_family_delta_log_Shannon_p_value
+)
+
+```
+
+
+
+
+
+
+```{r}
+DF_INDEXES_SHTGN_family_Stats_delta_Richness <- DF_INDEXES_SHTGN_family %>% 
+  dplyr::select(DRUG_COMPLEX, ACTARMCD, DAV, SUBJID, DAY, delta_Richness) %>% 
+  dplyr::group_by(DRUG_COMPLEX, ACTARMCD, DAV, DAY) %>% 
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$delta_Richness, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data) %>% 
+  dplyr::mutate(param="delta_Richness")
+
+
+DF_INDEXES_SHTGN_family_Stats_delta_log_Shannon <- DF_INDEXES_SHTGN_family %>% 
+  dplyr::select(DRUG_COMPLEX, ACTARMCD, DAV, SUBJID, DAY, delta_log_Shannon) %>% 
+  dplyr::group_by(DRUG_COMPLEX, ACTARMCD, DAV, DAY) %>% 
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$delta_log_Shannon, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data) %>% 
+  dplyr::mutate(param="delta_log_Shannon")
+
+# DF_INDEXES_SHTGN_family_Stats
+DF_INDEXES_SHTGN_family_Stats <- bind_rows(
+  DF_INDEXES_SHTGN_family_Stats_delta_Richness,
+  DF_INDEXES_SHTGN_family_Stats_delta_log_Shannon
+) %>% 
+  dplyr::filter(DAY != 1)
+
+
+DF_INDEXES_SHTGN_family_Summary <- full_join(
+  DF_INDEXES_SHTGN_family_p_value %>% dplyr::mutate(DAY=factor(as.integer(DAY), levels = v_DAY_levels)),
+  DF_INDEXES_SHTGN_family_Stats,
+  by=c("DRUG_COMPLEX", "ACTARMCD", "DAV", "DAY", "param")
+) %>% 
+  ungroup()
+
+df_y_position_TMP <- DF_INDEXES_SHTGN_family_Summary %>% 
+  dplyr::select(param, DRUG_COMPLEX, ACTARMCD, DAV, DAY, max) %>% 
+  group_by(param, DRUG_COMPLEX, ACTARMCD) %>% 
+  dplyr::summarise(y_position=1.1*max(max))
+
+DF_INDEXES_SHTGN_family_Summary <- DF_INDEXES_SHTGN_family_Summary %>% 
+  left_join(
+    df_y_position_TMP,
+    by=c("param", "DRUG_COMPLEX", "ACTARMCD")
+  )
+```
+
+
+
+```{r}
+library(ggsignif)
+
+# DF_INDEXES_SHTGN_family
+
+
+DF_INDEXES_SHTGN_family_Summary_TMP <- DF_INDEXES_SHTGN_family_Summary %>% 
+  dplyr::filter(param=="delta_Richness") %>% 
+  dplyr::filter(DAV == "NODAV")
+
+lbl_x <- "time (day)"
+lbl_y <- latex2exp::TeX(" $\\Delta$ Richness ")
+lbl_subtitle <- "NO DAV"
+
+DF_INDEXES_SHTGN_family_Summary_TMP %>% 
+  ggplot(aes(x=DAY, fill=DAY)) +
+  geom_boxplot(stat="identity", aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95), alpha = 0.5) +
+  geom_text(aes(label=sig, y=max), size=10) +
+  geom_jitter(
+    data = DF_INDEXES_SHTGN_family %>% dplyr::filter(DAV == "NODAV", DAY !=1),
+    aes(x=DAY, y=delta_Richness),
+    alpha = 0.5
+    ) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  facet_wrap(~DRUG_COMPLEX) +
+  scale_fill_manual(values = nv_DAY_color) +
+  theme_bla
+
+```
+
+
+
+
+
+
+
+
+
+
+```{r}
+DF_INDEXES_SHTGN_family_Summary %>% 
+  # dplyr::filter(sig == "*") %>% 
+  dplyr::filter(param == "delta_Richness") %>% 
+  dplyr::filter(DAV == "NODAV") %>% 
+  dplyr::arrange(DRUG_COMPLEX) %>% 
+  dplyr::select(DRUG_COMPLEX, DAY, sig, q50, min, max, num) %>% 
+  dplyr::mutate(
+    q50=signif(q50, digits = 3),
+    min=signif(min, digits = 3),
+    max=signif(max, digits = 3),
+    num=as.integer(num)
+    ) %>% 
+  dplyr::mutate(Delta_Richness_med_min_max=paste0(q50, " [", min, ", ", max, "]") ) %>% 
+  # dplyr::rename("Num.Subjects"="num") %>% 
+  dplyr::select(-q50, -min, -max) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra() %>% 
+  flextable::merge_v(j=c("param", "DRUG_COMPLEX", "ACTARMCD", "DAV")) %>% 
+  flextable::colformat_double(big.mark = ",", digits = 2, na_str = "" ) %>% 
+  flextable::set_header_labels(
+    values = list(num = "Number of Subjects", sig="Significant")
+    )
+  # flextable::set_header_labels(
+  #   values = list(Delta_Richness_med_min_max = "Delta Richness med [min, max]")
+  #   )
+```
+
+
+
+
+### Richness 16S
+
+```{r}
+DF_FAMILY_DATA_16S <- read.csv("DF_FAMILY_DATA_16S.CSV") %>% 
+  dplyr::rename("DAV"="str_DAV_DOSE") %>% 
+  dplyr::mutate(DRUG_COMPLEX=factor(DRUG_COMPLEX, levels = v_DRUG_COMPLEX_levels)) %>% 
+  dplyr::rename("RelAbun_16S"="RelAbun")
+
+# DF_FAMILY_DATA_16S
+```
+
+
+
+```{r}
+# DF_FAMILY_ABUNDANCES
+```
+
+
+```{r}
+DF_SHANNON_16S_family <- DF_FAMILY_DATA_16S %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV, SUBJID, DAY) %>% 
+  dplyr::summarise(
+    Richness = sum( ifelse(!is.na(Counts_16S>0), 1, 0) ),
+    Shannon = H_entropy(RelAbun_16S)
+  ) %>% 
+  ungroup()
+
+
+
+
+DF_SHANNON_16S_family_stats <- DF_SHANNON_16S_family %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV, DAY) %>%
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$Shannon, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data)
+
+DF_RICHNESS_16S_family_stats <- DF_SHANNON_16S_family %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV, DAY) %>%
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$Richness, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data)
+
+
+```
+
+
+```{r}
+lbl_x <- "time (days)"
+lbl_y <- "Mean Shannon Index Family 16S"
+DF_SHANNON_16S_family_stats %>% 
+  ggplot(aes(x=DAY, y=mean)) +
+  geom_point() +
+  geom_line() +
+  facet_grid(DRUG_COMPLEX~DAV) +
+  scale_x_continuous(breaks = DF_SHANNON_16S_family_stats %>% pull(DAY) %>% unique()) +
+  labs(x=lbl_x, y=lbl_y) +
+  theme_bla
+  
+```
+
+
+
+
+
+
+
+### Shannon Time Change plot
+
+```{r}
+str_TAXA_RANK_TMP <- "family"
+str_DAV_TMP <- "NODAV"
+lbl_subtitle <- sprintf("Taxonomic rank: %s, %s", str_TAXA_RANK_TMP, str_DAV_TMP)
+lbl_y <- "Shannon Index"
+lbl_x <- "time (days)"
+DF_SHANNON_SHTGN_family %>% 
+  dplyr::filter(DAV == "NODAV") %>% 
+  ggplot(aes(x=DAY, y=Shannon)) +
+  geom_point(aes(group=SUBJID), alpha=0.25) +
+  geom_line (aes(group=SUBJID), alpha=0.25) +
+  # geom_line (aes(y=log(Richness)), color ="red")  +
+  geom_line(
+    data=DF_SHANNON_SHTGN_family_stats %>% dplyr::filter(DAV == str_DAV_TMP), 
+    aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95, y=q50), 
+    color="red",
+    size = 1.25
+    ) +
+  facet_wrap(~DRUG_COMPLEX) +
+  labs(
+    x=lbl_x, y=lbl_y, subtitle = lbl_subtitle
+  ) +
+  scale_x_continuous(breaks = DF_SHANNON_SHTGN_family %>% pull(DAY) %>% unique()) +
+  theme_bla
+```
+
+
+### Shannon Table
+
+```{r}
+DF_SHANNON_SHTGN_family_stats %>% 
+  # dplyr::mutate(across(c("q05", "q25", "q50", "q75", "q95", "mean", "sd", "min", "max")), function (x) signif(x, digits = 3)) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra() %>% 
+  flextable::merge_v( j=c("DRUG_COMPLEX", "ACTARMCD", "DAV")) %>% 
+  flextable::colformat_double(
+    big.mark = ",", digits = 2, na_str = "N/A"
+  )
+
+```
+
+
+
+# Original data 16S withou Family agglomeration
+
+
+```{r}
+DF_SUBJS_TMP <- DF_FAMILY_DATA_16S %>% 
+  dplyr::select(DRUG_COMPLEX, DAV, ACTARMCD, SUBJID) %>% distinct()
+```
+
+
+```{r}
+adpf <- readRDS("data_original/adpf.RDS") %>% 
+  dplyr::mutate(DAY = as.integer( str_replace(AVISIT, "DAY ", "") ) ) %>% 
+  dplyr::mutate(SUBJID=as.integer(SUBJID)) %>% 
+  left_join(
+    DF_SUBJS_TMP,
+    by=c("ACTARMCD", "SUBJID")
+  )
+
+v_DAY_levels <- adpf %>% pull(DAY) %>%  unique() %>% sort()
+
+df_OBSOTUS_original <- adpf %>% dplyr::filter(PARAMCD == "OBSOTUS") %>% dplyr::mutate(DAY=factor(DAY, levels = v_DAY_levels))
+
+df_SHANNON_original <- adpf %>% dplyr::filter(PARAMCD == "SHANNON") %>% dplyr::mutate(DAY=factor(DAY, levels = v_DAY_levels))
+
+df_OBSOTUS_original_stats <- df_OBSOTUS_original %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV, DAY) %>%
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$AVAL, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data) %>% 
+  dplyr::mutate(param="Richness")
+  
+
+
+df_SHANNON_original_stats <- df_SHANNON_original %>% 
+  group_by(DRUG_COMPLEX, ACTARMCD, DAV, DAY) %>%
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$AVAL, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data) %>% 
+  dplyr::mutate(param ="Shannon")
+
+```
+
+
+
+
+```{r}
+# DF_INDEXES_SHTGN_family_Summary_TMP
+lbl_x <- "time (days)"
+lbl_y <- "Observed OTUs"
+df_OBSOTUS_original_stats %>%
+  dplyr::filter(DAV == "NODAV") %>% 
+  ggplot(aes(x=DAY, fill=DAY)) +
+  geom_boxplot(stat="identity", aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95), alpha = 0.5) +
+  # geom_text(aes(label=sig, y=max), size=10) +
+  # geom_jitter(
+  #   data = DF_INDEXES_SHTGN_family %>% dplyr::filter(DAV == "NODAV", DAY !=1),
+  #   aes(x=DAY, y=delta_Richness),
+  #   alpha = 0.5
+  #   ) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  facet_wrap(~DRUG_COMPLEX) +
+  # scale_fill_manual(values = nv_DAY_color) +
+  theme_bla
+
+```
+
+
+```{r}
+# DF_INDEXES_SHTGN_family_Summary_TMP
+lbl_x <- "time (days)"
+lbl_y <- "Shannon Index"
+df_SHANNON_original_stats %>%
+  dplyr::filter(DAV == "NODAV") %>% 
+  ggplot(aes(x=DAY, fill=DAY)) +
+  geom_boxplot(stat="identity", aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95), alpha = 0.5) +
+  # geom_text(aes(label=sig, y=max), size=10) +
+  # geom_jitter(
+  #   data = DF_INDEXES_SHTGN_family %>% dplyr::filter(DAV == "NODAV", DAY !=1),
+  #   aes(x=DAY, y=delta_Richness),
+  #   alpha = 0.5
+  #   ) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  facet_wrap(~DRUG_COMPLEX) +
+  # scale_fill_manual(values = nv_DAY_color) +
+  theme_bla
+
+```
+
+
+#### {-}
+
+### {-}
+
+
+
+
+
+```{r}
+# intersect(
+#   DF_BACTERIA_REF_SHTGN %>% pull(family),
+#   DF_BACTERIA_REF_16S %>% pull(Family)
+# )
+
+```
+
+
+```{r}
+# aaa <- intersect(
+#   DF_BACTERIA_REF_16S %>% pull(Phylum) %>% unique(),
+#   DF_SPECIES_ABUNDANCES %>% pull(phylum) %>% str_replace_all("p__", "p_") %>% unique()
+# 
+# )
+# joder <- DF_BACTERIA_REF_16S %>% pull(Phylum) %>% unique()
+# bbb <- !joder %in% aaa
+# joder[bbb]
+```
+
+```{r}
+# DF_SPECIES_ABUNDANCES %>% pull(phylum) %>% str_replace_all("p__", "p_") %>% unique()
+
+```
+
+
+
+```{r}
+# FFF <- DF_BACTERIA_REF_SHTGN %>% 
+#   full_join(
+#     DF_BACTERIA_REF_16S %>% dplyr::rename("family"="Family"), by=c("family")
+#     ) %>% 
+#   dplyr::select(family, rank_RelAbun_SHTGN, RelAbun_SHTGN.mean, rank_RelAbun_16S, Mean_RelAbun_16S_Cts) %>% 
+#   dplyr::arrange(desc(Mean_RelAbun_16S_Cts), desc(RelAbun_SHTGN.mean)) %>% 
+#   dplyr::mutate(new_id =seq(1, length(family)))
+```
+
+
+```{r}
+# FFF %>%
+#   # dplyr::arrange(desc(Mean_RelAbun_16S_Cts)) %>% 
+#   ggplot(aes(x=new_id)) +
+#   geom_point(aes(y=RelAbun_SHTGN.mean), color="red")+
+#   geom_point(aes(y=Mean_RelAbun_16S_Cts)) +
+#   scale_y_log10() +
+#   theme_bla
+```
+

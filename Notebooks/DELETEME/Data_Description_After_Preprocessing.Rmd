@@ -1,0 +1,2053 @@
+---
+title: "Anoruti Data Description after Preprocessing"
+author: Carlos Olivares^[IAME/Inserm, carlos.olivares@inserm.fr], Charles Burdet^[IAME/Inserm, charles.burdet@inserm.fr], Emmanuelle Comets^[IAME/Inserm, emmanuelle.comets@inserm.fr]
+output:
+  html_document:
+    code_folding: hide
+    toc: TRUE
+    number_sections: TRUE
+bibliography: Papers/Anoruti_Refs.bib  
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE, cache=TRUE, collapse = TRUE)
+```
+
+```{r}
+source("Anoruti_commons.R", local = knitr::knit_global())
+```
+
+
+```{r}
+DF_AB_TREATMENT <- read.csv("DF_AB_TREATMENT.CSV")
+# DF_AB_TREATMENT
+
+LLOQ_CFU_gr <- 10 # unities?
+
+```
+
+
+# Experimental protocol
+
+
+```{r}
+knitr::include_graphics("images/Anoruti_Sampling_Flowchart.png")
+```
+
+
+# Data
+
+
+
+```{r}
+"data_4_monolix/"
+```
+
+
+## TODO list
+
+1. basic description of the data
+ 	- control group for the different strains (with different colours)
+ 	- antibiotics for the different strains: boxplots comparing the different CFU counts given antibiotics versus the same day for control (D4)
+ 	- organ weight (by time)
+ 	- LAC Z+/Z-
+ 	+ tables (as tabs)
+2. analysis of the control group for PAS (natural course of infection)
+ - inoculum at D0, sacrifice starting D1 then D2, ... => ok to assume the inoculum to put in the bladder ?
+ - first models with (K+B) together:  
+
+* model schema (inoculum, proliferation, exchanges, elimination) and parameters, building process (successive steps) 
+* 'best' current model: some fits and VPC (do we describe the available data), some problems (RSE, variabilities, weird values of some parameters) 
+
+- model with K+B+U (if time to run some)
+
+
+```{r}
+aaa <- c(
+  "data_manually_modified/CFT_wo_AB.csv",
+  "data_manually_modified/NILS69_wo_AB.csv",
+  "data_manually_modified/PAS_wo_AB.csv",
+  "data_manually_modified/UTI_wo_AB.csv",
+  "data_manually_modified/CFT_w_AB.csv",
+  "data_manually_modified/NILS69_w_AB.csv",
+  "data_manually_modified/PAS_w_AB.csv",
+  "data_manually_modified/UTI_w_AB.csv"
+) %>% 
+  lapply(read.csv)
+
+DF_ALL_DATA <- lapply(
+  aaa, 
+  function (x) dplyr::mutate(
+    x, 
+    CFU_mL=as.numeric(CFU_mL),
+    log10_CFU_gr=as.numeric(log10_CFU_gr)
+    )
+  ) %>% 
+  bind_rows() %>% 
+  dplyr::mutate(strain = factor(strain, levels = v_strain_levels))
+
+# DF_ALL_DATA
+```
+
+
+
+
+```{r}
+df_LacZ_fraction_ALL <- DF_ALL_DATA %>% 
+  dplyr::select(group, id, organ, DAY, AB_code, strain, LacZ_p_CFU_mL, LacZ_m_CFU_mL) %>% 
+  dplyr::mutate(LacZ_fraction=LacZ_p_CFU_mL/(LacZ_p_CFU_mL + LacZ_m_CFU_mL))
+
+# df_LacZ_fraction_ALL %>% head()
+```
+
+
+
+```{r}
+df_4_mnlx_tmp <- DF_ALL_DATA %>% 
+  dplyr::left_join(
+    df_LacZ_fraction_ALL %>% dplyr::select(id, organ, DAY, AB_code, strain, LacZ_fraction),
+    by=c("id", "organ", "DAY", "AB_code", "strain")
+  ) %>% 
+  dplyr::mutate(
+    OBSERVATION=case_when(
+      organ == "K" ~ CFU_gr,
+      organ == "B" ~ CFU_gr,
+      organ == "U" ~ 10^(log10_CFU_mL)
+    ),
+    OBSERVATION_UNITS=case_when(
+      organ == "K" ~ "CFU/g",
+      organ == "B" ~ "CFU/g",
+      organ == "U" ~ "CFU/ml"
+    ),
+    OBSERVATION_LOG10=case_when(
+      organ == "K" ~ log10(CFU_gr),
+      organ == "B" ~ log10(CFU_gr),
+      organ == "U" ~ log10_CFU_mL
+    )
+  ) %>% dplyr::select(
+  group, organ, id, organ_weight, DAY, AB_code, strain, LacZ_fraction, OBSERVATION, OBSERVATION_UNITS, OBSERVATION_LOG10
+) %>% 
+  dplyr::rename(
+    # "OBSID" = "organ",
+    "grupo" = "group",
+    "TIME" = "DAY"
+  )
+
+```
+
+
+
+```{r}
+DT::datatable(df_4_mnlx_tmp, filter = "top")
+```
+
+
+
+
+## Generalities {.tabset}
+Assumptions:
+ - 
+
+### Protocol Description
+
+We estimate the weight at 20g as all the mice are 8 week-old 
+
+ - 8 week-old Mice were infected on Monday (D0)
+ - Antibiotic treatment is started on Wednesday morning (D2 post-infection).
+ - For cefotaxime: 100 mg/kg every 6 hours for 24 hours
+ - For fosfomycin: 100 mg/kg every 4 hours for 24 hours
+ - For ciprofloxacin: dose of 2.5 or 10 mg/kg at 9 a.m. and 5 p.m. for 48 hours
+ - For delafloxacin: dose of 10 mg/kg at 9 a.m. and 17 p.m. for 48 hours
+ - Sacrifice takes place on Friday morning (D4 post infection)
+
+
+
+### Bacteria Strains
+Mice are infected with the following bacteria strains:
+
+ - PAS:
+ - UTI:
+ - CFT:
+ - NILS69:
+
+
+### Antibiotics Treatment
+
+```{r}
+DF_AB_TREATMENT %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra()
+```
+
+
+
+
+
+
+### Number of Mice
+
+```{r}
+
+df_mice_group_distribution <- df_4_mnlx_tmp %>% 
+  dplyr::select(strain, AB_code, id, TIME) %>% 
+  dplyr::distinct() %>% 
+  dplyr::mutate(AB_code = factor(AB_code, levels = v_AB_code_levels)) %>% 
+  group_by(strain, AB_code, TIME) %>% 
+  summarise(Num=n()) %>% 
+  dplyr::arrange(strain, AB_code, TIME) %>% 
+  pivot_wider(names_from = TIME, values_from = Num) %>% 
+  
+  dplyr::arrange(strain, AB_code) %>% 
+  dplyr::ungroup() 
+
+df_mice_group_distribution %>% 
+  mutate(RowSum = rowSums(dplyr::select(., -strain, -AB_code), na.rm = TRUE)) %>% 
+  dplyr::bind_rows(., dplyr::summarise(., across(`1`:RowSum, .fns = function (x) sum(x, na.rm = TRUE)  ))) %>% 
+
+# df_mice_group_distribution %>% 
+  flextable::flextable() %>% 
+  flextable::merge_v(j=c("strain")) %>% 
+  flextable::theme_zebra()
+```
+
+
+
+
+## Organ weight {.tabset}
+
+
+
+
+### Control Group
+Control group is a group with infection but without AB treatment.
+
+```{r, fig.width=12, fig.height=8}
+df_Ct_weight <- df_4_mnlx_tmp %>% 
+  dplyr::select(organ, id, TIME, strain, AB_code, organ_weight) %>% 
+  dplyr::mutate(organ=factor(organ, levels = v_organ_levels)) %>% 
+  dplyr::filter(organ != "U") %>% 
+  dplyr::filter(AB_code == "Ct") 
+
+df_Ct_weight_Stats <- df_Ct_weight %>% 
+  group_by(organ, TIME, strain, AB_code) %>% 
+  nest() %>% 
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$organ_weight, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data)
+
+lbl_y <- "weight (g)"
+lbl_x <- "time (days)"
+lbl_subtitle <- "Ct"
+df_Ct_weight %>% 
+  ggplot(aes(x=TIME, y=organ_weight, color=strain, shape=strain)) +
+  geom_point(size=2) +
+  # geom_jitter(size=2) +
+  geom_line(data=df_Ct_weight_Stats, aes(y=q50), size=1) +
+  geom_errorbar(data=df_Ct_weight_Stats, aes(ymin=q50, ymax=q50, y=q50), size=1) +
+  facet_wrap(~organ, scales = "free") +
+  theme_ano +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  scale_color_manual(values = nv_strain_color) +
+  scale_shape_manual(values = nv_strain_shape)
+  # pull(AB_code) %>% unique()
+```
+
+
+```{r}
+
+lbl_y <- "K weight (g)"
+lbl_x <- "B weight (g)"
+lbl_subtitle <- "Ct"
+
+df_Ct_weight_Stats %>% 
+  dplyr::select(organ, TIME, strain, AB_code, q50) %>% 
+  pivot_wider(values_from = q50, names_from = organ) %>% 
+  dplyr::filter(AB_code == "Ct") %>% 
+  # dplyr::mutate(TIME=factor(TIME)) %>% 
+  ggplot(aes(x=B, y=K, color=strain)) +
+  # ggplot(aes(x=K, y=B, color=strain, shape=TIME)) +
+  geom_point(size=3, aes(shape=as.factor(TIME))) +
+  geom_path() +
+  coord_cartesian(
+    x=c(0, 0.06),
+    y=c(0, 0.6)
+  ) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  scale_shape_manual(values = nv_DAY_shape) +
+  scale_color_manual(values = nv_strain_color) +
+  theme_ano
+```
+
+
+### K vs B Ct
+
+```{r, fig.width=12, fig.height=8}
+lbl_subtitle <- "Ct"
+df_4_mnlx_tmp %>% 
+  dplyr::select(organ, id, TIME, strain, AB_code, organ_weight) %>% 
+  dplyr::mutate(organ=factor(organ, levels = v_organ_levels)) %>% 
+  dplyr::filter(organ != "U") %>% 
+  dplyr::filter(AB_code == "Ct") %>% 
+  dplyr::mutate(TIME=factor(TIME)) %>% 
+  pivot_wider(names_from = organ, values_from = organ_weight) %>% 
+  ggplot(aes(x=B, y=K, color=strain, shape=TIME)) +
+  geom_point(size=3) +
+  coord_cartesian(
+    x=c(0, 0.06),
+    y=c(0, 0.6)
+  ) +
+  # geom_jitter() +
+  labs(subtitle = lbl_subtitle) +
+  facet_wrap(~strain) + #, scales = "free_y") +
+  theme_ano +
+  scale_color_manual(values = nv_strain_color) +
+  # scale_shape_manual(values = nv_strain_shape)
+  scale_shape_manual(values = nv_DAY_shape)
+```
+No correlation between organ sizes
+
+
+
+### K vs B All
+
+```{r, fig.width=12, fig.height=8}
+lbl_subtitle <- "All treatments"
+df_4_mnlx_tmp %>% 
+  dplyr::select(organ, id, TIME, strain, AB_code, organ_weight) %>% 
+  dplyr::mutate(organ=factor(organ, levels = v_organ_levels)) %>% 
+  dplyr::filter(organ != "U") %>% 
+  dplyr::mutate(TIME=factor(TIME)) %>% 
+  pivot_wider(names_from = organ, values_from = organ_weight) %>% 
+  ggplot(aes(x=B, y=K, color=AB_code, shape=TIME)) +
+  geom_point(size=3) +
+  coord_cartesian(
+    x=c(0, 0.06),
+    y=c(0, 0.6)
+  ) +
+  # geom_jitter() +
+  # labs(subtitle = lbl_subtitle) +
+  facet_wrap(~strain) + #, scales = "free_y") +
+  theme_ano +
+  # scale_color_manual(values = nv_strain_color) +
+  scale_color_manual(values = nv_AB_code_color) +
+  # scale_shape_manual(values = nv_strain_shape)
+  scale_shape_manual(values = nv_DAY_shape)
+```
+
+
+### Kidney
+
+
+```{r, fig.width=12, fig.height=8}
+lbl_x <- "AB Treatment"
+lbl_y <- "K weight (g)"
+lbl_subtitle <- "Day: 4"
+
+
+df_4_mnlx_tmp %>% #pull(AB_code) %>% unique()
+  dplyr::filter(TIME == 4) %>%
+  dplyr::mutate(AB_code = factor(AB_code, levels = v_AB_code_levels)) %>% 
+  dplyr::filter(organ == "K") %>% #dplyr::filter(organ_weight > 0.5) #pull(organ_weight) %>% max( na.rm = TRUE)
+  # dplyr::filter(AB_code == "Ct") %>%
+  ggplot(aes(x=AB_code, y=organ_weight, color=AB_code)) +
+  geom_boxplot(color="black", outlier.shape = NA) +
+  geom_jitter(size=2) +
+  # scale_shape_manual(values = nv_DAY_shape) +
+  scale_color_manual(values = nv_AB_code_color) +
+  facet_wrap(~strain) + #, scales = "free_y") +
+  coord_cartesian(
+    ylim=c(0.1, 0.5)
+  ) +
+  labs(x = lbl_x, y = lbl_y, subtitle = lbl_subtitle) +
+  theme_ano +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+
+
+```{r}
+# ddd <- df_4_mnlx_tmp %>% 
+#   dplyr::mutate(AB_code = factor(AB_code, levels = v_AB_code_levels))
+# ddd %>% 
+#   # dplyr::select(AB_code, OBSERVATION_LOG10) %>% 
+#   dplyr::filter(AB_code=="Delaflo")
+
+```
+
+
+```{r, fig.width=12, fig.height=8}
+lbl_y <- "weight (g)"
+df_4_mnlx_tmp %>% 
+  dplyr::mutate(AB_code = factor(AB_code, levels = v_AB_code_levels)) %>% 
+  dplyr::filter(organ == "K") %>% #dplyr::filter(organ_weight > 0.5) #pull(organ_weight) %>% max( na.rm = TRUE)
+  # dplyr::filter(AB_code == "Ct") %>%
+  ggplot(aes(x=AB_code, y=organ_weight, shape=as.factor(TIME), color=AB_code)) +
+  geom_boxplot(color="black", outlier.shape = NA) +
+  geom_jitter(size=2) +
+  scale_shape_manual(values = nv_DAY_shape) +
+  scale_color_manual(values = nv_AB_code_color) +
+  facet_grid(strain~TIME) + #, scales = "free_y") +
+  coord_cartesian(
+    ylim=c(0.1, 0.5)
+  ) +
+  theme_ano +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+
+
+Outlier:
+```{r}
+df_4_mnlx_tmp %>% 
+  dplyr::filter(organ == "K") %>% dplyr::filter(organ_weight > 0.5) %>%  #pull(organ_weight) %>% max( na.rm = TRUE)
+  flextable::flextable()
+```
+
+### Bladder
+
+```{r, fig.width=12, fig.height=8}
+
+lbl_x <- "AB Treatment"
+lbl_y <- "B weight (g)"
+lbl_subtitle <- "Day: 4"
+
+
+df_4_mnlx_tmp %>% 
+  dplyr::mutate(AB_code = factor(AB_code, levels = v_AB_code_levels)) %>% 
+  dplyr::filter(organ == "B") %>% #dplyr::filter(organ_weight > 0.5) #pull(organ_weight) %>% max( na.rm = TRUE)
+  # dplyr::filter(AB_code == "Ct") %>%
+  dplyr::filter(TIME == 4) %>% 
+  ggplot(aes(x=AB_code, y=organ_weight, color=AB_code)) +
+  geom_boxplot(color="black", outlier.shape = NA) +
+  geom_jitter(size=2) +
+  # scale_shape_manual(values = nv_DAY_shape) +
+  scale_color_manual(values = nv_AB_code_color) +
+  facet_wrap(~strain) + #, scales = "free_y") +
+  # coord_cartesian(
+  #   ylim=c(0.1, 0.5)
+  # ) +
+  labs(x = lbl_x, y = lbl_y, subtitle = lbl_subtitle) +
+  theme_ano +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+
+```{r, fig.width=12, fig.height=8}
+lbl_y <- "weight (g)"
+df_4_mnlx_tmp %>% 
+  dplyr::mutate(AB_code = factor(AB_code, levels = v_AB_code_levels)) %>% 
+  dplyr::filter(organ == "B") %>% #dplyr::filter(organ_weight > 0.5) #pull(organ_weight) %>% max( na.rm = TRUE)
+  # dplyr::filter(AB_code == "Ct") %>%
+  ggplot(aes(x=AB_code, y=organ_weight, shape=as.factor(TIME), color=AB_code)) +
+  geom_boxplot(color="black", outlier.shape = NA) +
+  geom_jitter(size=2) +
+  scale_shape_manual(values = nv_DAY_shape) +
+  scale_color_manual(values = nv_AB_code_color) +
+  facet_grid(strain~TIME) + #, scales = "free_y") +
+  # coord_cartesian(
+  #   ylim=c(0.1, 0.5)
+  # ) +
+  theme_ano +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+### {-}
+## {-}
+
+## Bacteria CFU density {.tabset}
+
+```{r}
+df_Stats_log10_CFU_Units <- df_4_mnlx_tmp %>% 
+  group_by(organ, OBSERVATION_UNITS, TIME, AB_code, strain) %>% 
+  nest() %>% 
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$OBSERVATION_LOG10, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data) %>% 
+  dplyr::mutate(AB_code=factor(AB_code, levels = v_AB_code_levels))
+```
+
+### Plot Ct only
+
+```{r, fig.width=12, fig.height=8}
+
+lbl_x <- "time (days)"
+lbl_y <- ""
+# str_ORGAN_TMP <- "U"
+df_4_mnlx_tmp %>% #pull(AB_code) %>% unique()
+  dplyr::filter(AB_code == "Ct") %>%
+  # dplyr::filter(organ == str_ORGAN_TMP) %>%
+  ggplot(aes(x=TIME, y=OBSERVATION_LOG10, color=strain, shape=AB_code)) +
+  geom_point(size=2) +
+  geom_line(data=df_Stats_log10_CFU_Units %>% dplyr::filter(AB_code == "Ct") , aes(y=q50)) +
+  geom_errorbar(data=df_Stats_log10_CFU_Units %>% dplyr::filter(AB_code == "Ct") , aes(ymin=q50, ymax=q50, y=q50), size=1) +
+  labs(x=lbl_x, y=lbl_y) +
+  facet_wrap(~organ) +
+  # facet_grid(strain~organ) + 
+  scale_color_manual(values=nv_strain_color) +
+  scale_shape_manual(values=nv_AB_code_shape) +
+  scale_x_continuous(breaks = df_4_mnlx_tmp %>% pull(TIME) %>% unique() ) +
+  theme_ano
+
+```
+
+```{r, fig.width=12, fig.height=8}
+
+lbl_x <- "time (days)"
+lbl_y <- ""
+# str_ORGAN_TMP <- "U"
+df_4_mnlx_tmp %>% #pull(AB_code) %>% unique()
+  dplyr::filter(AB_code == "Ct") %>%
+  # dplyr::filter(organ == str_ORGAN_TMP) %>%
+  ggplot(aes(x=TIME, y=OBSERVATION_LOG10, color=strain, shape=AB_code)) +
+  geom_point(size=2) +
+  geom_line(data=df_Stats_log10_CFU_Units %>% dplyr::filter(AB_code == "Ct") , aes(y=q50)) +
+  geom_errorbar(data=df_Stats_log10_CFU_Units %>% dplyr::filter(AB_code == "Ct") , aes(ymin=q50, ymax=q50, y=q50), size=1) +
+  labs(x=lbl_x, y=lbl_y) +
+  # facet_wrap(~organ) + 
+  facet_grid(strain~organ) + 
+  scale_color_manual(values=nv_strain_color) +
+  scale_shape_manual(values=nv_AB_code_shape) +
+  scale_x_continuous(breaks = df_4_mnlx_tmp %>% pull(TIME) %>% unique() ) +
+  theme_ano
+
+```
+
+
+### Plots CFU densities
+```{r, fig.width=12, fig.height=8}
+# AB_code
+lbl_x <- "time (days)"
+lbl_y <- ""
+str_ORGAN_TMP <- "U"
+df_4_mnlx_tmp %>% #pull(AB_code) %>% unique()
+  # dplyr::filter(organ == str_ORGAN_TMP) %>%
+  ggplot(aes(x=TIME, y=OBSERVATION_LOG10, color=organ, shape=AB_code)) +
+  geom_point(size=2) +
+  geom_line(data=df_Stats_log10_CFU_Units, aes(y=q50)) +
+  geom_errorbar(data=df_Stats_log10_CFU_Units, aes(ymin=q50, ymax=q50, y=q50), size=1) +
+  labs(x=lbl_x, y=lbl_y) +
+  facet_wrap(~strain) + 
+  scale_color_manual(values=nv_organ_colors) +
+  scale_shape_manual(values=nv_AB_code_shape) +
+  scale_x_continuous(breaks = df_4_mnlx_tmp %>% pull(TIME) %>% unique() ) +
+  theme_ano
+
+```
+
+### Kidney
+
+```{r, fig.width=12, fig.height=8}
+# AB_code
+lbl_x <- "time (days)"
+lbl_y <- ""
+str_ORGAN_TMP <- "K"
+df_4_mnlx_tmp %>% #pull(AB_code) %>% unique()
+  dplyr::filter(organ == str_ORGAN_TMP) %>%
+  ggplot(aes(x=TIME, y=OBSERVATION_LOG10, color=AB_code, shape=AB_code)) +
+  geom_point(size=2) +
+  geom_line(data=df_Stats_log10_CFU_Units %>% dplyr::filter(organ == str_ORGAN_TMP), aes(y=q50)) +
+  geom_errorbar(data=df_Stats_log10_CFU_Units %>% dplyr::filter(organ == str_ORGAN_TMP), aes(ymin=q50, ymax=q50, y=q50), size=1) +
+  labs(x=lbl_x, y=lbl_y) +
+  facet_wrap(~strain) + 
+  scale_color_manual(values=nv_AB_code_color) +
+  scale_shape_manual(values=nv_AB_code_shape) +
+  scale_x_continuous(breaks = df_4_mnlx_tmp %>% pull(TIME) %>% unique() ) +
+  theme_ano
+
+```
+
+
+
+
+### Bladder
+
+```{r, fig.width=12, fig.height=8}
+# AB_code
+lbl_x <- "time (days)"
+lbl_y <- ""
+str_ORGAN_TMP <- "B"
+df_4_mnlx_tmp %>% #pull(AB_code) %>% unique()
+  dplyr::filter(organ == str_ORGAN_TMP) %>%
+  ggplot(aes(x=TIME, y=OBSERVATION_LOG10, color=AB_code, shape=AB_code)) +
+  geom_point(size=2) +
+  geom_line(data=df_Stats_log10_CFU_Units %>% dplyr::filter(organ == str_ORGAN_TMP), aes(y=q50)) +
+  geom_errorbar(data=df_Stats_log10_CFU_Units %>% dplyr::filter(organ == str_ORGAN_TMP), aes(ymin=q50, ymax=q50, y=q50), size=1) +
+  labs(x=lbl_x, y=lbl_y) +
+  facet_wrap(~strain) + 
+  scale_color_manual(values=nv_AB_code_color) +
+  scale_shape_manual(values=nv_AB_code_shape) +
+  scale_x_continuous(breaks = df_4_mnlx_tmp %>% pull(TIME) %>% unique() ) +
+  theme_ano
+
+```
+
+
+
+
+### Urine
+
+```{r, fig.width=12, fig.height=8}
+# AB_code
+lbl_x <- "time (days)"
+lbl_y <- ""
+str_ORGAN_TMP <- "U"
+df_4_mnlx_tmp %>% #pull(AB_code) %>% unique()
+  dplyr::filter(organ == str_ORGAN_TMP) %>%
+  ggplot(aes(x=TIME, y=OBSERVATION_LOG10, color=AB_code, shape=AB_code)) +
+  geom_point(size=2) +
+  geom_line(data=df_Stats_log10_CFU_Units %>% dplyr::filter(organ == str_ORGAN_TMP), aes(y=q50)) +
+  geom_errorbar(data=df_Stats_log10_CFU_Units %>% dplyr::filter(organ == str_ORGAN_TMP), aes(ymin=q50, ymax=q50, y=q50), size=1) +
+  labs(x=lbl_x, y=lbl_y) +
+  facet_wrap(~strain) + 
+  scale_color_manual(values=nv_AB_code_color) +
+  scale_shape_manual(values=nv_AB_code_shape) +
+  scale_x_continuous(breaks = df_4_mnlx_tmp %>% pull(TIME) %>% unique() ) +
+  theme_ano
+
+```
+
+
+### Summary K
+
+```{r}
+str_ORGAN_TMP <- "K"
+lbl_caption <- "Kidney Bact. log10(CFU/g)"
+```
+
+#### AB Ct, Days 2, 10, 16
+
+```{r, fig.width=12, fig.height=8}
+v_TIME_TMP <- c(2, 10, 16)
+str_AB_code_TMP <- "Ct"
+lbl_subtitle <- sprintf("Organ: %s, AB: %s, Day: %s", str_ORGAN_TMP, str_AB_code_TMP, paste(v_TIME_TMP, collapse = ", ") )
+lbl_y <- "log(CFU/g)"
+
+df_Stats_log10_CFU_Units_TMP <- df_Stats_log10_CFU_Units %>% 
+  dplyr::filter(AB_code == str_AB_code_TMP) %>% 
+  dplyr::filter(TIME %in% v_TIME_TMP) %>% 
+  dplyr::mutate(TIME = as.factor(TIME)) %>% 
+  dplyr::filter(organ == str_ORGAN_TMP)
+
+df_4_mnlx_tmp_TMP <- df_4_mnlx_tmp %>% 
+  dplyr::filter(AB_code == str_AB_code_TMP) %>% 
+  dplyr::filter(TIME %in% v_TIME_TMP) %>% 
+  dplyr::mutate(TIME = as.factor(TIME)) %>% 
+  dplyr::filter(organ == str_ORGAN_TMP)
+
+
+get_wilcox_pvalue <- function(str_strain_1, str_strain_2, df_4_mnlx_tmp_TMP){
+  b_strain_1 <- df_4_mnlx_tmp_TMP %>% dplyr::filter(strain == str_strain_1) %>% nrow() > 0 
+  b_strain_2 <- df_4_mnlx_tmp_TMP %>% dplyr::filter(strain == str_strain_2) %>% nrow() > 0 
+  if ( b_strain_1 & b_strain_2 ){
+    p.value <- wilcox.test(
+      df_4_mnlx_tmp_TMP %>% dplyr::filter(strain == str_strain_1) %>% pull(OBSERVATION),
+      df_4_mnlx_tmp_TMP %>% dplyr::filter(strain == str_strain_2) %>% pull(OBSERVATION), 
+      correct = FALSE
+    )$p.value
+  }else{
+    p.value <- NA
+  }
+  return(p.value)
+}
+
+
+v_TIME_TMP[1]
+get_df_p.values <- function(v_strain_levels, df_4_mnlx_tmp_TMP, str_AB_code_TMP, str_ORGAN_TMP, int_TIME_TMP){
+  ppp <- utils::combn(v_strain_levels, 2) #%>% t() #%>% as.data.frame()
+  v_strain_1 <- ppp[1, ]
+  v_strain_2 <- ppp[2, ]
+
+  v_p.value_tmp <- sapply(
+  seq_along(v_strain_1), 
+  function(ii)  get_wilcox_pvalue(v_strain_1[ii], v_strain_2[ii], df_4_mnlx_tmp_TMP %>% dplyr::filter(TIME == int_TIME_TMP))
+  )
+
+  df_p.value <- data.frame(
+    AB_code = str_AB_code_TMP,
+    organ = str_ORGAN_TMP,
+    TIME = int_TIME_TMP,
+    strain_1 = v_strain_1,
+    strain_2 = v_strain_2,
+    p.value = v_p.value_tmp
+  ) 
+  return(df_p.value)
+}
+
+# get_df_p.values(v_strain_levels, df_4_mnlx_tmp_TMP, str_AB_code_TMP, str_ORGAN_TMP, v_TIME_TMP[3])
+
+df_p.values_Ct <- lapply(v_TIME_TMP, function(x) get_df_p.values(v_strain_levels, df_4_mnlx_tmp_TMP, str_AB_code_TMP, str_ORGAN_TMP, x) ) %>% 
+  bind_rows()
+  # purrr::reduce()
+
+# df_4_mnlx_tmp_TMP %>% pull(strain)
+```
+
+
+```{r, fig.width=12, fig.height=8}
+ggplot(data=df_Stats_log10_CFU_Units_TMP, aes(x=strain, color=strain, group=interaction(TIME, strain))) +
+  geom_violin(data=df_4_mnlx_tmp_TMP, size=1, aes(y=OBSERVATION_LOG10), alpha=0.1) +
+  geom_boxplot(aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95), stat="identity", alpha=0.1) +
+  geom_point(data=df_4_mnlx_tmp_TMP, size=2, aes(y=OBSERVATION_LOG10)) +
+  facet_wrap(~TIME) +
+  labs(x="", y=lbl_y, subtitle = lbl_subtitle) +
+  scale_color_manual(values = nv_strain_color) +
+  theme_ano 
+  # theme(axis.text.x = element_text(angle=90))
+
+
+
+```
+
+Should I do the wilcox.test on the log transform data or the data without log?
+
+```{r}
+
+
+df_p.values_Ct %>% 
+  dplyr::mutate(p.value = signif(p.value, digits=3)) %>% 
+  flextable::flextable() %>% 
+  flextable::merge_v(j=c("strain_1")) %>% 
+  flextable::theme_zebra()
+
+```
+
+
+
+#### Day 4
+Add p.values wilcoxon test p.values with Ct group for each AB
+
+```{r, fig.width=12, fig.height=8}
+int_TIME_TMP <- 4
+
+lbl_subtitle <- sprintf("Organ: %s, Day: %d", str_ORGAN_TMP, int_TIME_TMP)
+
+df_Stats_log10_CFU_Units_TMP <- df_Stats_log10_CFU_Units %>% 
+  dplyr::filter(TIME == int_TIME_TMP) %>% 
+  dplyr::filter(organ == str_ORGAN_TMP)
+
+df_4_mnlx_tmp_TMP <- df_4_mnlx_tmp %>% 
+  dplyr::filter(TIME == int_TIME_TMP) %>% 
+  dplyr::filter(organ == str_ORGAN_TMP)
+
+ggplot(data=df_Stats_log10_CFU_Units_TMP, aes(x=AB_code, color=AB_code)) +
+  geom_boxplot(aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95), stat="identity") +
+  geom_jitter(data=df_4_mnlx_tmp_TMP, size=2, aes(y=OBSERVATION_LOG10)) +
+  facet_wrap(~strain) +
+  labs(x="", y="", subtitle = lbl_subtitle) +
+  scale_color_manual(values = nv_AB_code_color) +
+  theme_ano +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+#### Table
+```{r}
+df_Stats_log10_CFU_Units %>%
+  dplyr::filter(organ == str_ORGAN_TMP) %>% 
+  dplyr::select(strain, AB_code, organ, TIME, everything(), -organ, -OBSERVATION_UNITS) %>% 
+  dplyr::mutate(AB_code=factor(AB_code, levels = v_AB_code_levels)) %>% 
+  dplyr::mutate(num=as.integer(num)) %>% 
+  dplyr::arrange(strain, AB_code, TIME) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra() %>% 
+  flextable::merge_v(j=c("strain", "AB_code", "organ")) %>% 
+  flextable::colformat_double(digits = 2, na_str = "N/A") %>% 
+  flextable::set_caption(lbl_caption)
+```
+
+
+### Summary B
+```{r}
+str_ORGAN_TMP <- "B"
+lbl_caption <- "Bladder Bact. log10(CFU/g)"
+```
+
+
+
+#### AB Ct, Days 2, 10, 16
+
+```{r, fig.width=12, fig.height=8}
+v_TIME_TMP <- c(2, 10, 16)
+str_AB_code_TMP <- "Ct"
+lbl_subtitle <- sprintf("Organ: %s, AB: %s, Day: %s", str_ORGAN_TMP, str_AB_code_TMP, paste(v_TIME_TMP, collapse = ", ") )
+lbl_y <- "log(CFU/g)"
+
+df_Stats_log10_CFU_Units_TMP <- df_Stats_log10_CFU_Units %>% 
+  dplyr::filter(AB_code == str_AB_code_TMP) %>% 
+  dplyr::filter(TIME %in% v_TIME_TMP) %>% 
+  dplyr::mutate(TIME = as.factor(TIME)) %>% 
+  dplyr::filter(organ == str_ORGAN_TMP)
+
+df_4_mnlx_tmp_TMP <- df_4_mnlx_tmp %>% 
+  dplyr::filter(AB_code == str_AB_code_TMP) %>% 
+  dplyr::filter(TIME %in% v_TIME_TMP) %>% 
+  dplyr::mutate(TIME = as.factor(TIME)) %>% 
+  dplyr::filter(organ == str_ORGAN_TMP)
+
+
+get_wilcox_pvalue <- function(str_strain_1, str_strain_2, df_4_mnlx_tmp_TMP){
+  b_strain_1 <- df_4_mnlx_tmp_TMP %>% dplyr::filter(strain == str_strain_1) %>% nrow() > 0 
+  b_strain_2 <- df_4_mnlx_tmp_TMP %>% dplyr::filter(strain == str_strain_2) %>% nrow() > 0 
+  if ( b_strain_1 & b_strain_2 ){
+    p.value <- wilcox.test(
+      df_4_mnlx_tmp_TMP %>% dplyr::filter(strain == str_strain_1) %>% pull(OBSERVATION),
+      df_4_mnlx_tmp_TMP %>% dplyr::filter(strain == str_strain_2) %>% pull(OBSERVATION), 
+      correct = FALSE
+    )$p.value
+  }else{
+    p.value <- NA
+  }
+  return(p.value)
+}
+
+
+get_df_p.values <- function(v_strain_levels, df_4_mnlx_tmp_TMP, str_AB_code_TMP, str_ORGAN_TMP, int_TIME_TMP){
+  ppp <- utils::combn(v_strain_levels, 2) #%>% t() #%>% as.data.frame()
+  v_strain_1 <- ppp[1, ]
+  v_strain_2 <- ppp[2, ]
+
+  v_p.value_tmp <- sapply(
+  seq_along(v_strain_1), 
+  function(ii)  get_wilcox_pvalue(v_strain_1[ii], v_strain_2[ii], df_4_mnlx_tmp_TMP %>% dplyr::filter(TIME == int_TIME_TMP))
+  )
+
+  df_p.value <- data.frame(
+    AB_code = str_AB_code_TMP,
+    organ = str_ORGAN_TMP,
+    TIME = int_TIME_TMP,
+    strain_1 = v_strain_1,
+    strain_2 = v_strain_2,
+    p.value = v_p.value_tmp
+  ) 
+  return(df_p.value)
+}
+
+# get_df_p.values(v_strain_levels, df_4_mnlx_tmp_TMP, str_AB_code_TMP, str_ORGAN_TMP, v_TIME_TMP[3])
+
+df_p.values_Ct <- lapply(v_TIME_TMP, function(x) get_df_p.values(v_strain_levels, df_4_mnlx_tmp_TMP, str_AB_code_TMP, str_ORGAN_TMP, x) ) %>% 
+  bind_rows()
+  # purrr::reduce()
+
+# df_4_mnlx_tmp_TMP %>% pull(strain)
+```
+
+
+```{r, fig.width=12, fig.height=8}
+ggplot(data=df_Stats_log10_CFU_Units_TMP, aes(x=strain, color=strain, group=interaction(TIME, strain))) +
+  geom_violin(data=df_4_mnlx_tmp_TMP, size=1, aes(y=OBSERVATION_LOG10), alpha=0.1) +
+  geom_boxplot(aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95), stat="identity", alpha=0.1) +
+  geom_point(data=df_4_mnlx_tmp_TMP, size=2, aes(y=OBSERVATION_LOG10)) +
+  facet_wrap(~TIME) +
+  labs(x="", y=lbl_y, subtitle = lbl_subtitle) +
+  scale_color_manual(values = nv_strain_color) +
+  theme_ano 
+  # theme(axis.text.x = element_text(angle=90))
+
+
+
+```
+
+Should I do the wilcox.test on the log transform data or the data without log?
+
+```{r}
+
+
+df_p.values_Ct %>% 
+  dplyr::mutate(p.value = signif(p.value, digits=3)) %>% 
+  flextable::flextable() %>% 
+  flextable::merge_v(j=c("strain_1")) %>% 
+  flextable::theme_zebra()
+
+```
+
+
+
+
+
+#### Day 4
+```{r, fig.width=12, fig.height=8}
+int_TIME_TMP <- 4
+
+lbl_subtitle <- sprintf("Organ: %s, Day: %d", str_ORGAN_TMP, int_TIME_TMP)
+
+df_Stats_log10_CFU_Units_TMP <- df_Stats_log10_CFU_Units %>% 
+  dplyr::filter(TIME == int_TIME_TMP) %>% 
+  dplyr::filter(organ == str_ORGAN_TMP)
+
+df_4_mnlx_tmp_TMP <- df_4_mnlx_tmp %>% 
+  dplyr::filter(TIME == int_TIME_TMP) %>% 
+  dplyr::filter(organ == str_ORGAN_TMP)
+
+ggplot(data=df_Stats_log10_CFU_Units_TMP, aes(x=AB_code, color=AB_code)) +
+  geom_boxplot(aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95), stat="identity") +
+  geom_jitter(data=df_4_mnlx_tmp_TMP, size=2, aes(y=OBSERVATION_LOG10)) +
+  facet_wrap(~strain) +
+  labs(x="", y="", subtitle = lbl_subtitle) +
+  scale_color_manual(values = nv_AB_code_color) +
+  theme_ano +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+#### Table
+
+```{r}
+df_Stats_log10_CFU_Units %>%
+  dplyr::filter(organ == str_ORGAN_TMP) %>% 
+  dplyr::select(strain, AB_code, organ, TIME, everything(), -organ, -OBSERVATION_UNITS) %>% 
+  dplyr::mutate(AB_code=factor(AB_code, levels = v_AB_code_levels)) %>% 
+  dplyr::mutate(num=as.integer(num)) %>% 
+  dplyr::arrange(strain, AB_code, TIME) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra() %>% 
+  flextable::merge_v(j=c("strain", "AB_code", "organ")) %>% 
+  flextable::colformat_double(digits = 2, na_str = "N/A") %>% 
+  flextable::set_caption(lbl_caption)
+```
+
+
+
+### Summary U
+```{r}
+str_ORGAN_TMP <- "U"
+lbl_caption <- "Urine Bact. log10(CFU/ml)"
+```
+
+
+#### AB Ct, Days 2, 10, 16
+
+```{r, fig.width=12, fig.height=8}
+v_TIME_TMP <- c(2, 10, 16)
+str_AB_code_TMP <- "Ct"
+lbl_subtitle <- sprintf("Organ: %s, AB: %s, Day: %s", str_ORGAN_TMP, str_AB_code_TMP, paste(v_TIME_TMP, collapse = ", ") )
+lbl_y <- "log(CFU/g)"
+
+df_Stats_log10_CFU_Units_TMP <- df_Stats_log10_CFU_Units %>% 
+  dplyr::filter(AB_code == str_AB_code_TMP) %>% 
+  dplyr::filter(TIME %in% v_TIME_TMP) %>% 
+  dplyr::mutate(TIME = as.factor(TIME)) %>% 
+  dplyr::filter(organ == str_ORGAN_TMP)
+
+df_4_mnlx_tmp_TMP <- df_4_mnlx_tmp %>% 
+  dplyr::filter(AB_code == str_AB_code_TMP) %>% 
+  dplyr::filter(TIME %in% v_TIME_TMP) %>% 
+  dplyr::mutate(TIME = as.factor(TIME)) %>% 
+  dplyr::filter(organ == str_ORGAN_TMP)
+
+
+get_wilcox_pvalue <- function(str_strain_1, str_strain_2, df_4_mnlx_tmp_TMP){
+  b_strain_1 <- df_4_mnlx_tmp_TMP %>% dplyr::filter(strain == str_strain_1) %>% nrow() > 0 
+  b_strain_2 <- df_4_mnlx_tmp_TMP %>% dplyr::filter(strain == str_strain_2) %>% nrow() > 0 
+  if ( b_strain_1 & b_strain_2 ){
+    p.value <- wilcox.test(
+      df_4_mnlx_tmp_TMP %>% dplyr::filter(strain == str_strain_1) %>% pull(OBSERVATION),
+      df_4_mnlx_tmp_TMP %>% dplyr::filter(strain == str_strain_2) %>% pull(OBSERVATION), 
+      correct = FALSE
+    )$p.value
+  }else{
+    p.value <- NA
+  }
+  return(p.value)
+}
+
+
+get_df_p.values <- function(v_strain_levels, df_4_mnlx_tmp_TMP, str_AB_code_TMP, str_ORGAN_TMP, int_TIME_TMP){
+  ppp <- utils::combn(v_strain_levels, 2) #%>% t() #%>% as.data.frame()
+  v_strain_1 <- ppp[1, ]
+  v_strain_2 <- ppp[2, ]
+
+  v_p.value_tmp <- sapply(
+  seq_along(v_strain_1), 
+  function(ii)  get_wilcox_pvalue(v_strain_1[ii], v_strain_2[ii], df_4_mnlx_tmp_TMP %>% dplyr::filter(TIME == int_TIME_TMP))
+  )
+
+  df_p.value <- data.frame(
+    AB_code = str_AB_code_TMP,
+    organ = str_ORGAN_TMP,
+    TIME = int_TIME_TMP,
+    strain_1 = v_strain_1,
+    strain_2 = v_strain_2,
+    p.value = v_p.value_tmp
+  ) 
+  return(df_p.value)
+}
+
+# get_df_p.values(v_strain_levels, df_4_mnlx_tmp_TMP, str_AB_code_TMP, str_ORGAN_TMP, v_TIME_TMP[3])
+
+df_p.values_Ct <- lapply(v_TIME_TMP, function(x) get_df_p.values(v_strain_levels, df_4_mnlx_tmp_TMP, str_AB_code_TMP, str_ORGAN_TMP, x) ) %>% 
+  bind_rows()
+  # purrr::reduce()
+
+# df_4_mnlx_tmp_TMP %>% pull(strain)
+```
+
+
+```{r, fig.width=12, fig.height=8}
+ggplot(data=df_Stats_log10_CFU_Units_TMP, aes(x=strain, color=strain, group=interaction(TIME, strain))) +
+  geom_violin(data=df_4_mnlx_tmp_TMP, size=1, aes(y=OBSERVATION_LOG10), alpha=0.1) +
+  geom_boxplot(aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95), stat="identity", alpha=0.1) +
+  geom_point(data=df_4_mnlx_tmp_TMP, size=2, aes(y=OBSERVATION_LOG10)) +
+  facet_wrap(~TIME) +
+  labs(x="", y=lbl_y, subtitle = lbl_subtitle) +
+  scale_color_manual(values = nv_strain_color) +
+  theme_ano 
+  # theme(axis.text.x = element_text(angle=90))
+
+
+
+```
+
+Should I do the wilcox.test on the log transform data or the data without log?
+
+```{r}
+
+
+df_p.values_Ct %>% 
+  dplyr::mutate(p.value = signif(p.value, digits=3)) %>% 
+  flextable::flextable() %>% 
+  flextable::merge_v(j=c("strain_1")) %>% 
+  flextable::theme_zebra()
+
+```
+
+
+
+
+
+#### Day 4
+```{r, fig.width=12, fig.height=8}
+int_TIME_TMP <- 4
+
+lbl_subtitle <- sprintf("Organ: %s, Day: %d", str_ORGAN_TMP, int_TIME_TMP)
+
+df_Stats_log10_CFU_Units_TMP <- df_Stats_log10_CFU_Units %>% 
+  dplyr::filter(TIME == int_TIME_TMP) %>% 
+  dplyr::filter(organ == str_ORGAN_TMP)
+
+df_4_mnlx_tmp_TMP <- df_4_mnlx_tmp %>% 
+  dplyr::filter(TIME == int_TIME_TMP) %>% 
+  dplyr::filter(organ == str_ORGAN_TMP)
+
+ggplot(data=df_Stats_log10_CFU_Units_TMP, aes(x=AB_code, color=AB_code)) +
+  geom_boxplot(aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95), stat="identity") +
+  geom_jitter(data=df_4_mnlx_tmp_TMP, size=2, aes(y=OBSERVATION_LOG10)) +
+  facet_wrap(~strain) +
+  labs(x="", y="", subtitle = lbl_subtitle) +
+  scale_color_manual(values = nv_AB_code_color) +
+  theme_ano +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+#### Table
+
+```{r}
+df_Stats_log10_CFU_Units %>%
+  dplyr::filter(organ == str_ORGAN_TMP) %>% 
+  dplyr::select(strain, AB_code, organ, TIME, everything(), -organ, -OBSERVATION_UNITS) %>% 
+  dplyr::mutate(AB_code=factor(AB_code, levels = v_AB_code_levels)) %>% 
+  dplyr::mutate(num=as.integer(num)) %>% 
+  dplyr::arrange(strain, AB_code, TIME) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra() %>% 
+  flextable::merge_v(j=c("strain", "AB_code", "organ")) %>% 
+  flextable::colformat_double(digits = 2, na_str = "N/A") %>% 
+  flextable::set_caption(lbl_caption)
+```
+
+
+
+
+<!-- #### Day 1 -->
+<!-- ```{r, fig.width=12, fig.height=8} -->
+<!-- int_TIME_TMP <- 1 -->
+
+<!-- lbl_subtitle <- sprintf("Organ: %s, Day: %d", str_ORGAN_TMP, int_TIME_TMP) -->
+
+<!-- df_Stats_log10_CFU_Units_TMP <- df_Stats_log10_CFU_Units %>%  -->
+<!--   dplyr::filter(TIME == int_TIME_TMP) %>%  -->
+<!--   dplyr::filter(organ == str_ORGAN_TMP) -->
+
+<!-- df_4_mnlx_tmp_TMP <- df_4_mnlx_tmp %>%  -->
+<!--   dplyr::filter(TIME == int_TIME_TMP) %>%  -->
+<!--   dplyr::filter(organ == str_ORGAN_TMP) -->
+
+<!-- ggplot(data=df_Stats_log10_CFU_Units_TMP, aes(x=AB_code, color=AB_code)) + -->
+<!--   geom_boxplot(aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95), stat="identity") + -->
+<!--   geom_jitter(data=df_4_mnlx_tmp_TMP, size=2, aes(y=OBSERVATION_LOG10)) + -->
+<!--   facet_wrap(~strain) + -->
+<!--   labs(x="", y="", subtitle = lbl_subtitle) + -->
+<!--   scale_color_manual(values = nv_AB_code_color) + -->
+<!--   theme_ano + -->
+<!--   theme(axis.text.x = element_text(angle=90)) -->
+<!-- ``` -->
+
+
+### {-}
+
+## {-}
+
+## Bacteria CFU K + B {.tabset}
+
+\begin{equation}
+  W = w_{K}K + w_{B}B
+\end{equation}
+where $w_{K}$ and  $w_{B}$ are the corresponding weights(g) of Kidney and Bladder.
+
+
+
+```{r}
+# What should I do with the LacZ_fraction here?
+
+df_4_mnlx_W <- bind_rows(
+  df_4_mnlx_tmp %>% dplyr::filter(organ != "U") %>% 
+    dplyr::group_by(grupo, id, TIME, AB_code, strain) %>% 
+    summarise(OBSERVATION=sum(organ_weight*OBSERVATION)) %>% 
+    dplyr::ungroup() %>% 
+    dplyr::mutate(organ="W") %>% 
+    dplyr::mutate(OBSERVATION_UNITS = "CFU") %>% 
+    dplyr::mutate(OBSERVATION_LOG10 = log10(OBSERVATION)),
+  df_4_mnlx_tmp %>% dplyr::filter(organ == "U")
+) %>% 
+  dplyr::arrange(strain, AB_code, id, TIME)
+
+# df_4_mnlx_W
+  
+```
+
+<!-- fK = a/(a+b) -->
+<!-- fB = c/(c+d) -->
+
+<!-- fW = (a+c)/(a+b+c+d) -->
+
+
+
+
+```{r}
+df_Stats_log10_W_U_CFU_Units <- df_4_mnlx_W %>% 
+  group_by(organ, OBSERVATION_UNITS, TIME, AB_code, strain) %>% 
+  nest() %>% 
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$OBSERVATION_LOG10, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data) %>% 
+  dplyr::mutate(AB_code=factor(AB_code, levels = v_AB_code_levels)) %>% 
+  dplyr::mutate(strain=factor(strain, levels = v_strain_levels)) %>% 
+  dplyr::mutate(organ=factor(organ, levels = v_organ_levels))
+```
+
+
+### Plots CFU densities
+```{r, fig.width=12, fig.height=8}
+# AB_code
+lbl_x <- "time (days)"
+lbl_y <- ""
+# str_ORGAN_TMP <- "U"
+df_4_mnlx_W %>% #pull(AB_code) %>% unique()
+  ggplot(aes(x=TIME, y=OBSERVATION_LOG10, color=organ, shape=AB_code)) +
+  geom_point(size=2) +
+  geom_line(data=df_Stats_log10_W_U_CFU_Units, aes(y=q50)) +
+  geom_errorbar(data=df_Stats_log10_W_U_CFU_Units, aes(ymin=q50, ymax=q50, y=q50), size=1) +
+  labs(x=lbl_x, y=lbl_y) +
+  facet_wrap(~strain) + 
+  scale_color_manual(values=nv_organ_colors) +
+  scale_shape_manual(values=nv_AB_code_shape) +
+  scale_x_continuous(breaks = df_4_mnlx_tmp %>% pull(TIME) %>% unique() ) +
+  theme_ano
+
+```
+
+
+
+### W densities
+
+```{r, fig.width=12, fig.height=8}
+# AB_code
+lbl_x <- "time (days)"
+lbl_y <- ""
+# str_ORGAN_TMP <- "U"
+df_4_mnlx_W %>% #pull(AB_code) %>% unique()
+  ggplot(aes(x=TIME, y=OBSERVATION_LOG10, color=organ, shape=AB_code)) +
+  geom_point(size=2) +
+  geom_line(data=df_Stats_log10_W_U_CFU_Units, aes(y=q50)) +
+  geom_errorbar(data=df_Stats_log10_W_U_CFU_Units, aes(ymin=q50, ymax=q50, y=q50), size=1) +
+  labs(x=lbl_x, y=lbl_y) +
+  facet_wrap(~strain) + 
+  scale_color_manual(values=nv_organ_colors) +
+  scale_shape_manual(values=nv_AB_code_shape) +
+  scale_x_continuous(breaks = df_4_mnlx_tmp %>% pull(TIME) %>% unique() ) +
+  theme_ano
+
+```
+
+### W
+
+```{r, fig.width=12, fig.height=8}
+# AB_code
+lbl_x <- "time (days)"
+lbl_y <- ""
+str_ORGAN_TMP <- "W"
+df_4_mnlx_W %>% #pull(AB_code) %>% unique()
+  dplyr::filter(organ == str_ORGAN_TMP) %>% 
+  ggplot(aes(x=TIME, y=OBSERVATION_LOG10, color=AB_code, shape=AB_code)) +
+  geom_point(size=2) +
+  geom_line(data=df_Stats_log10_W_U_CFU_Units %>% dplyr::filter(organ == str_ORGAN_TMP), aes(y=q50)) +
+  geom_errorbar(data=df_Stats_log10_W_U_CFU_Units %>% dplyr::filter(organ == str_ORGAN_TMP), aes(ymin=q50, ymax=q50, y=q50), size=1) +
+  labs(x=lbl_x, y=lbl_y) +
+  facet_wrap(~strain) + 
+  scale_color_manual(values=nv_AB_code_color) +
+  scale_shape_manual(values=nv_AB_code_shape) +
+  scale_x_continuous(breaks = df_4_mnlx_tmp %>% pull(TIME) %>% unique() ) +
+  theme_ano
+
+```
+
+
+### Boxplot W
+
+```{r}
+str_ORGAN_TMP <- "W"
+lbl_caption <- "W log10(CFU)"
+```
+
+#### Day 1
+```{r, fig.width=12, fig.height=8}
+int_TIME_TMP <- 1
+
+lbl_subtitle <- sprintf("Organ: %s, Day: %d", str_ORGAN_TMP, int_TIME_TMP)
+
+df_Stats_log10_W_U_CFU_Units_TMP <- df_Stats_log10_W_U_CFU_Units %>% 
+  dplyr::filter(TIME == int_TIME_TMP) %>% 
+  dplyr::filter(organ == str_ORGAN_TMP)
+
+df_4_mnlx_W_TMP <- df_4_mnlx_W %>% 
+  dplyr::filter(TIME == int_TIME_TMP) %>% 
+  dplyr::filter(organ == str_ORGAN_TMP)
+
+ggplot(data=df_Stats_log10_W_U_CFU_Units_TMP, aes(x=AB_code, color=AB_code)) +
+  geom_boxplot(aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95), stat="identity") +
+  geom_jitter(data=df_4_mnlx_W_TMP, size=2, aes(y=OBSERVATION_LOG10)) +
+  facet_wrap(~strain) +
+  labs(x="", y="", subtitle = lbl_subtitle) +
+  scale_color_manual(values = nv_AB_code_color) +
+  theme_ano +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+
+#### Day 2
+```{r, fig.width=12, fig.height=8}
+int_TIME_TMP <- 2
+
+lbl_subtitle <- sprintf("Organ: %s, Day: %d", str_ORGAN_TMP, int_TIME_TMP)
+
+df_Stats_log10_W_U_CFU_Units_TMP <- df_Stats_log10_W_U_CFU_Units %>% 
+  dplyr::filter(TIME == int_TIME_TMP) %>% 
+  dplyr::filter(organ == str_ORGAN_TMP)
+
+df_4_mnlx_W_TMP <- df_4_mnlx_W %>% 
+  dplyr::filter(TIME == int_TIME_TMP) %>% 
+  dplyr::filter(organ == str_ORGAN_TMP)
+
+ggplot(data=df_Stats_log10_W_U_CFU_Units_TMP, aes(x=AB_code, color=AB_code)) +
+  geom_boxplot(aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95), stat="identity") +
+  geom_jitter(data=df_4_mnlx_W_TMP, size=2, aes(y=OBSERVATION_LOG10)) +
+  facet_wrap(~strain) +
+  labs(x="", y="", subtitle = lbl_subtitle) +
+  scale_color_manual(values = nv_AB_code_color) +
+  theme_ano +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+
+#### Table
+
+
+```{r}
+df_Stats_log10_W_U_CFU_Units %>%
+  dplyr::filter(organ == str_ORGAN_TMP) %>% 
+  dplyr::select(strain, AB_code, organ, TIME, everything(), -organ, -OBSERVATION_UNITS) %>% 
+  dplyr::mutate(AB_code=factor(AB_code, levels = v_AB_code_levels)) %>% 
+  dplyr::mutate(num=as.integer(num)) %>% 
+  dplyr::arrange(strain, AB_code, TIME) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra() %>% 
+  flextable::merge_v(j=c("strain", "AB_code", "organ")) %>% 
+  flextable::colformat_double(digits = 2, na_str = "N/A") %>% 
+  flextable::set_caption(lbl_caption)
+
+```
+
+
+
+### Amounts at day 1
+
+No so initial amounts of bacteria at day 1 but this should be proportional to the initial innoculum however the provided values is $\approx 10^8$ something missing here?
+
+```{r, fig.width=12, fig.height=8}
+df_4_mnlx_tmp %>% dplyr::filter(organ != "U") %>% 
+  dplyr::mutate(wO=OBSERVATION*organ_weight) %>% 
+  group_by(grupo, id, TIME, AB_code, strain) %>% 
+  summarise(W=sum(wO)) %>% 
+  ungroup() %>% 
+  dplyr::mutate(log10_W=log10(W)) %>% 
+  dplyr::mutate(AB_code=factor(AB_code, levels = v_AB_code_levels)) %>% 
+  dplyr::mutate(strain=factor(strain, levels = v_strain_levels)) %>% 
+  dplyr::filter(TIME == 1 ) %>% 
+  # dplyr::filter(AB_code == "Ct") %>% 
+  ggplot(aes(y=log10_W, x=AB_code, color=AB_code)) +
+  geom_violin() +
+  geom_boxplot() +
+  geom_jitter() +
+  facet_wrap(~strain) +
+  # geom_jitter() +
+  scale_color_manual(values=nv_AB_code_color) +
+  theme_ano +
+  theme(axis.text.x = element_text(angle=90))
+
+```
+
+### {-}
+
+
+## {-}
+
+## Amounts CFU K, B, Urine 
+If we consider a urine volume of 1ml
+
+```{r, fig.width=12, fig.height=10}
+
+df_4_mnlx_CFU <- df_4_mnlx_tmp %>% 
+  dplyr::mutate(
+    CFU = ifelse(organ != "U", organ_weight*OBSERVATION, OBSERVATION) # assuming a fix urine volume of 1ml
+    ) 
+
+
+df_4_mnlx_CFU_Stat <- bind_rows(
+  df_4_mnlx_CFU %>% 
+    group_by(organ, TIME, AB_code, strain) %>% 
+    nest() %>% 
+    dplyr::mutate(
+      Stats = map_df(data, ~ceor_stats(.$CFU, na.rm = TRUE) )
+    ) %>%
+    unnest(Stats) %>%
+    ungroup() %>% 
+    dplyr::select(-data),
+  df_4_mnlx_CFU %>% 
+    group_by(organ, TIME, AB_code) %>% 
+    nest() %>% 
+    dplyr::mutate(
+      Stats = map_df(data, ~ceor_stats(.$CFU, na.rm = TRUE) )
+    ) %>%
+    unnest(Stats) %>%
+    ungroup() %>% 
+    dplyr::select(-data) %>% 
+    dplyr::mutate(strain = factor("ALL", levels = v_strain_levels))
+)
+
+
+df_4_mnlx_CFU_density_Stat <- bind_rows(
+  df_4_mnlx_CFU %>% 
+    group_by(organ, TIME, AB_code, strain) %>% 
+    nest() %>% 
+    dplyr::mutate(
+      Stats = map_df(data, ~ceor_stats(.$OBSERVATION, na.rm = TRUE) )
+    ) %>%
+    unnest(Stats) %>%
+    ungroup() %>% 
+    dplyr::select(-data),
+  df_4_mnlx_CFU %>% 
+    group_by(organ, TIME, AB_code) %>% 
+    nest() %>% 
+    dplyr::mutate(
+      Stats = map_df(data, ~ceor_stats(.$OBSERVATION, na.rm = TRUE) )
+    ) %>%
+    unnest(Stats) %>%
+    ungroup() %>% 
+    dplyr::select(-data) %>% 
+    dplyr::mutate(strain = factor("ALL", levels = v_strain_levels))
+)
+```
+
+
+
+### Day 1 Ct, PAS
+
+```{r, fig.width=12, fig.height=10}
+df_4_mnlx_CFU %>% 
+  dplyr::select(-LacZ_fraction, -OBSERVATION_UNITS, -OBSERVATION_LOG10) %>% 
+  # dplyr::rename("CFUdens" = "OBSERVATION") %>% 
+  # # pivot_longer(cols=c("CFUdens", "CFU")) %>% 
+  dplyr::filter(AB_code == "Ct", strain == "PAS") %>% 
+  # dplyr::filter(organ == "K") %>% 
+  dplyr::filter(TIME == 1) %>%
+  ggplot() +
+  geom_boxplot(aes(x=organ, y=CFU)) +
+  # geom_line(aes(x=name, y=value, group=id), color='gray') +
+  geom_point(aes(x=organ, y=CFU)) +
+  scale_y_log10() +
+  facet_wrap(~organ) +
+  theme_ano
+```
+
+### Multiple days comparsion between CFU density and CFU
+
+```{r, fig.width=12, fig.height=10}
+lbl_x <- ""
+lbl_y <- ""
+df_4_mnlx_CFU %>% 
+  dplyr::select(-LacZ_fraction, -OBSERVATION_UNITS, -OBSERVATION_LOG10) %>% 
+  dplyr::rename("CFUdens" = "OBSERVATION") %>% 
+  pivot_longer(cols=c("CFUdens", "CFU")) %>% 
+  dplyr::filter(AB_code == "Ct", strain == "PAS") %>% 
+  # dplyr::filter(organ == "K") %>% 
+  # dplyr::filter(TIME == 1) %>% 
+  ggplot() +
+  geom_boxplot(aes(x=name, y=value)) +
+  geom_line(aes(x=name, y=value, group=id), color='gray') +
+  geom_point(aes(x=name, y=value, group=id)) +
+    scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x, n=6),
+                labels = scales::trans_format("log10", scales::math_format(10^.x)) ) +
+
+  facet_grid(organ~TIME) +
+  labs(x=lbl_x, y=lbl_y) +
+  theme_ano +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+### CFU table
+
+```{r, fig.width=12, fig.height=10}
+df_4_mnlx_CFU_density_Stat %>% #pull(strain) %>% unique()
+  # dplyr::mutate(AB_code = factor(AB_code, levels = v_AB_code_levels)) %>% 
+  # dplyr::mutate(strain = factor(strain, levels = v_strain_levels)) %>% 
+  dplyr::mutate_if(is.double, function(x) signif(x, digits = 3)) %>% 
+  dplyr::arrange(AB_code, strain, TIME, organ) %>% 
+  DT::datatable(filter = "top")
+```
+
+
+### CFU density table
+
+```{r, fig.width=12, fig.height=10}
+df_4_mnlx_CFU_Stat %>% 
+  dplyr::mutate_if(is.double, function(x) signif(x, digits = 3)) %>% 
+  DT::datatable(filter = "top")
+```
+
+### Comparison between CFU densities vs CFU {.tabset}
+Considering urine volume of 1ml
+
+#### CFU densities
+
+```{r, fig.width=14, fig.height=8}
+
+lbl_x <- "time (days)"
+lbl_y <- "CFU densities"
+lbl_subtitle <- ""
+
+plt <- df_4_mnlx_CFU %>% 
+  dplyr::filter(AB_code == "Ct") %>% 
+  # dplyr::filter(organ != "U") %>% 
+  plotly::highlight_key(~id, "Select ID") %>% 
+  ggplot(aes(x=TIME, y=OBSERVATION, color=strain, shape=AB_code, label=str(id) ) ) +
+  geom_point(size = 2) +
+  geom_line(
+    data=df_4_mnlx_CFU_density_Stat %>% 
+      dplyr::filter(AB_code == "Ct"), # %>% 
+      # dplyr::filter(organ != "U"), 
+    aes(x=TIME, y=q50),
+    size=1
+    ) +
+  coord_cartesian(
+    ylim=c(1, 1e9)
+  ) +
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x, n=6),
+                labels = scales::trans_format("log10", scales::math_format(10^.x)) ) +
+  # facet_grid(strain~organ) +
+  facet_wrap(~organ) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  scale_color_manual(values = nv_strain_color) +
+  theme_ano
+
+ply <- plotly::ggplotly(plt)
+
+plotly::highlight(
+  ply,
+  selectize = TRUE, persistent = TRUE
+)
+
+
+```
+
+
+
+#### CFU
+
+```{r, fig.width=14, fig.height=8}
+lbl_x <- "time (days)"
+lbl_y <- "CFU"
+lbl_subtitle <- "Considering 1ml of Urine for All Mice"
+
+# ptl_ind <- plotly::highlight_key(df_indv_fits_selmdl_p_obs, ~ID, "Select ID") %>%
+
+
+plt <- df_4_mnlx_CFU %>% 
+  dplyr::filter(AB_code == "Ct") %>% 
+  plotly::highlight_key(~id, "Select ID") %>% 
+  # dplyr::filter(organ != "U") %>% 
+  ggplot(aes(x=TIME, y=CFU, color=strain, shape=AB_code, label=str(id) )) +
+  geom_point(size = 2) +
+  geom_line(
+    data=df_4_mnlx_CFU_Stat %>% 
+      dplyr::filter(AB_code == "Ct"), # %>% 
+      # dplyr::filter(organ != "U"), 
+    aes(x=TIME, y=q50),
+    size=1
+    ) +
+  coord_cartesian(
+    ylim=c(1, 1e9)
+  ) +
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x, n=6),
+                labels = scales::trans_format("log10", scales::math_format(10^.x)) ) +
+  # facet_grid(strain~organ) +
+  facet_wrap(~organ) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  scale_color_manual(values = nv_strain_color) +
+  theme_ano
+
+ply <- plotly::ggplotly(plt)
+
+plotly::highlight(
+  ply,
+  selectize = TRUE, persistent = TRUE
+)
+
+
+```
+
+### {-}
+
+## Comparison between density and amounts
+```{r, fig.width=12, fig.height=10}
+lbl_x <- "K & B (CFU/g), U (CFU/ml)"
+lbl_y <- "K & B (CFU), U (CFU/ml) "
+df_4_mnlx_CFU %>% 
+  ggplot(aes(x=OBSERVATION, y=CFU, color=AB_code)) +
+  geom_point(size=2) +
+  # facet_wrap(~organ, scales = "free_y") +
+  facet_grid(strain~organ) +
+  scale_color_manual(values = nv_AB_code_color) +
+  scale_x_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+                labels = scales::trans_format("log10", scales::math_format(10^.x)) ) +
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+                labels = scales::trans_format("log10", scales::math_format(10^.x)) ) +
+  labs(x=lbl_x, y=lbl_y) +
+  geom_function(fun = identity, color = "black", linetype="dashed") +
+  # coord_cartesian(
+  #   x = c(10, 1e6),
+  #   y = c(10, 1e6)
+  # ) +
+  theme_ano
+```
+
+
+
+```{r}
+lbl_x <- "Kidney (CFU)"
+lbl_y <- "Bladder (CFU)"
+lbl_subtitle <- "Ct"
+df_4_mnlx_CFU_K_B_pw_tmp <- df_4_mnlx_CFU %>% 
+  dplyr::select(organ, id, TIME, AB_code, strain, CFU) %>% 
+  dplyr::filter(organ != "U") %>% 
+  pivot_wider(values_from = CFU, names_from = organ) %>% 
+  dplyr::filter(AB_code == "Ct") %>% 
+  dplyr::mutate(TIME=factor(TIME))
+
+# lm(log10(B)~log10(K), df_4_mnlx_CFU_K_B_pw_tmp)
+
+# cor(df_4_mnlx_CFU %>% dplyr::filter(organ != "U"))
+
+lm(log10(B)~log10(K), df_4_mnlx_CFU_K_B_pw_tmp %>% dplyr::filter(K>20) )
+# cor(x=log10(df_4_mnlx_CFU_K_B_pw_tmp$K), y=log10(df_4_mnlx_CFU_K_B_pw_tmp$B), na.rm = TRUE, method = "pearson")
+
+df_4_mnlx_CFU_K_B_pw_tmp %>% 
+  # dplyr::filter(K>20) %>% 
+  ggplot(aes(x=K, y=B, color=strain, shape=TIME) ) +
+  geom_point(size=3) +
+  # geom_smooth() +
+  geom_function(fun = function(x) 10^(2.5284)*x^(0.3397), color="black", linetype="dashed", label="K^(0.33)") +
+  geom_function(fun = function(x) 10^(2.0420)*x^(0.4474), color="red", linetype="dashed", label="K^(0.44)") +
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x, n=6),
+              labels = scales::trans_format("log10", scales::math_format(10^.x)) ) +
+  scale_x_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+              labels = scales::trans_format("log10", scales::math_format(10^.x)) ) +
+  labs(x=lbl_x, y=lbl_y, subtitle=lbl_subtitle) +
+  scale_shape_manual(values = nv_DAY_shape) +
+  scale_color_manual(values = nv_strain_color) +
+  theme_ano
+```
+
+
+
+```{r}
+lbl_x <- "Kidney (CFU/g)"
+lbl_y <- "Bladder (CFU/g)"
+lbl_subtitle <- "Ct"
+df_4_mnlx_OBS_K_B_pw_tmp <- df_4_mnlx_CFU %>% 
+  dplyr::select(organ, id, TIME, AB_code, strain, OBSERVATION) %>% 
+  dplyr::filter(organ != "U") %>% 
+  pivot_wider(values_from = OBSERVATION, names_from = organ) %>% 
+  dplyr::filter(AB_code == "Ct") %>% 
+  dplyr::mutate(TIME=factor(TIME))
+
+# lm(log10(B)~log10(K), df_4_mnlx_OBS_K_B_pw_tmp)
+
+# cor(df_4_mnlx_CFU %>% dplyr::filter(organ != "U"))
+
+lm(log10(B)~log10(K), df_4_mnlx_OBS_K_B_pw_tmp %>% dplyr::filter(K>20) )
+# cor(x=log10(df_4_mnlx_CFU_K_B_pw_tmp$K), y=log10(df_4_mnlx_CFU_K_B_pw_tmp$B), na.rm = TRUE, method = "pearson")
+
+df_4_mnlx_OBS_K_B_pw_tmp %>% 
+  # dplyr::filter(K>20) %>% 
+  ggplot(aes(x=K, y=B, color=strain, shape=TIME) ) +
+  geom_point(size=3) +
+  # geom_path() +
+  # geom_smooth() +
+  # geom_function(fun = function(x) 10^(2.5284)*x^(0.3397), color="black", linetype="dashed") +
+  # geom_function(fun = function(x) 10^(2.0420)*x^(0.4474), color="red", linetype="dashed") +
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x, n=6),
+              labels = scales::trans_format("log10", scales::math_format(10^.x)) ) +
+  scale_x_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+              labels = scales::trans_format("log10", scales::math_format(10^.x)) ) +
+  labs(x=lbl_x, y=lbl_y, subtitle=lbl_subtitle) +
+  scale_shape_manual(values = nv_DAY_shape) +
+  scale_color_manual(values = nv_strain_color) +
+  # facet_wrap(~strain) +
+  theme_ano
+```
+
+### Kidney day 4 With AB
+
+```{r, fig.width=12, fig.height=8}
+lbl_x <- ""
+lbl_y <- "CFU"
+lbl_subtitle <- "Kidney day 4"
+df_4_mnlx_CFU %>% 
+  dplyr::filter(organ == "K") %>% 
+  dplyr::filter(TIME == 4) %>% 
+  dplyr::mutate(AB_code=factor(AB_code, levels = v_AB_code_levels)) %>% 
+  ggplot(aes(x=AB_code, y=CFU, color=AB_code)) +
+  geom_jitter() +
+  geom_boxplot(alpha=0.1, outlier.shape=NA) +
+  # geom_boxplot(data = df_4_mnlx_CFU_Stat, aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95, y=q50), stat="identity", alpha=0.1) +
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+              labels = scales::trans_format("log10", scales::math_format(10^.x)) ) +
+  facet_wrap(~strain) +
+  scale_color_manual(values=nv_AB_code_color) +
+  # scale_shape_manual(values=nv_AB_code_shape) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  theme_ano +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+
+
+### Bladder day 4 With AB
+
+```{r, fig.width=12, fig.height=8}
+lbl_x <- ""
+lbl_y <- "CFU"
+lbl_subtitle <- "Bladder day 4"
+df_4_mnlx_CFU %>% 
+  dplyr::filter(organ == "B") %>% 
+  dplyr::filter(TIME == 4) %>% 
+  dplyr::mutate(AB_code=factor(AB_code, levels = v_AB_code_levels)) %>% 
+  ggplot(aes(x=AB_code, y=CFU, color=AB_code)) +
+  geom_jitter() +
+  geom_boxplot(alpha=0.1, outlier.shape=NA) +
+  # geom_boxplot(data = df_4_mnlx_CFU_Stat, aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95, y=q50), stat="identity", alpha=0.1) +
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+              labels = scales::trans_format("log10", scales::math_format(10^.x)) ) +
+  facet_wrap(~strain) +
+  scale_color_manual(values=nv_AB_code_color) +
+  # scale_shape_manual(values=nv_AB_code_shape) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  theme_ano +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+### Urine day 4 With AB
+
+```{r, fig.width=12, fig.height=8}
+lbl_x <- ""
+lbl_y <- "CFU"
+lbl_subtitle <- "Urine day 4"
+df_4_mnlx_CFU %>% 
+  dplyr::filter(organ == "U") %>% 
+  dplyr::filter(TIME == 4) %>% 
+  dplyr::mutate(AB_code=factor(AB_code, levels = v_AB_code_levels)) %>% 
+  ggplot(aes(x=AB_code, y=CFU, color=AB_code)) +
+  geom_jitter() +
+  geom_boxplot(alpha=0.1, outlier.shape=NA) +
+  # geom_boxplot(data = df_4_mnlx_CFU_Stat, aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95, y=q50), stat="identity", alpha=0.1) +
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+              labels = scales::trans_format("log10", scales::math_format(10^.x)) ) +
+  facet_wrap(~strain) +
+  scale_color_manual(values=nv_AB_code_color) +
+  # scale_shape_manual(values=nv_AB_code_shape) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  theme_ano +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+
+## LacZ+ fraction {.tabset}
+
+```{r}
+df_Stats_LacZ_p <- df_4_mnlx_tmp %>% 
+  group_by(organ, OBSERVATION_UNITS, TIME, AB_code, strain) %>% 
+  nest() %>% 
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$LacZ_fraction, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data)
+# df_Stats_LacZ_p
+```
+
+
+### Plots LacZ+ fraction
+```{r, fig.width=12, fig.height=8}
+lbl_x <- "time (days)"
+lbl_y <- "LacZ+ fraction"
+df_4_mnlx_tmp %>% 
+  ggplot(aes(x=TIME, y=LacZ_fraction, color=organ, shape=AB_code)) +
+  geom_point() +
+  # geom_errorbar(data=df_Stats_log10_CFU_Units, aes(ymin=q50, ymax=q50, y=q50), size=1) +
+  geom_errorbar(data=df_Stats_LacZ_p, aes(y=q50, ymin=q50, ymax=q50)) +
+  geom_line(data=df_Stats_LacZ_p, aes(y=q50)) +
+  facet_wrap(~strain) +
+  labs(x=lbl_x, y=lbl_y) +
+  scale_color_manual(values = nv_organ_colors) +
+  scale_shape_manual(values = nv_AB_code_shape) +
+  theme_ano
+```
+
+
+
+### Plots LacZ+ fraction Ct
+
+
+
+```{r, fig.width=12, fig.height=8}
+lbl_x <- "time (days)"
+lbl_y <- "LacZ+ fraction"
+lbl_subtitle <- "Ct"
+df_4_mnlx_tmp %>% 
+  dplyr::filter(AB_code == "Ct") %>% 
+  ggplot(aes(x=TIME, y=LacZ_fraction, color=organ, shape=AB_code)) +
+  geom_point() +
+  # geom_errorbar(data=df_Stats_log10_CFU_Units, aes(ymin=q50, ymax=q50, y=q50), size=1) +
+  geom_errorbar(data=df_Stats_LacZ_p %>% dplyr::filter(AB_code == "Ct"), aes(y=q50, ymin=q50, ymax=q50)) +
+  geom_line(data=df_Stats_LacZ_p, aes(y=q50)) +
+  facet_wrap(~strain) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  scale_color_manual(values = nv_organ_colors) +
+  scale_shape_manual(values = nv_AB_code_shape) +
+  theme_ano
+```
+### Boxplots LacZ+ fraction Kidney day 4 all AB
+
+
+```{r, fig.width=12, fig.height=8}
+lbl_x <- ""
+lbl_y <- "LacZ+ fraction"
+lbl_subtitle <- "Kidney day 4"
+df_4_mnlx_CFU %>% 
+  dplyr::filter(organ == "K") %>% 
+  dplyr::filter(TIME == 4) %>% 
+  dplyr::mutate(AB_code=factor(AB_code, levels = v_AB_code_levels)) %>% 
+  ggplot(aes(x=AB_code, y=LacZ_fraction, color=AB_code)) +
+  geom_jitter() +
+  geom_boxplot(alpha=0.1, outlier.shape=NA) +
+  # geom_boxplot(data = df_4_mnlx_CFU_Stat, aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95, y=q50), stat="identity", alpha=0.1) +
+  # scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x, n=3),
+  #             labels = scales::trans_format("log10", scales::math_format(10^.x)) ) +
+  facet_wrap(~strain) +
+  scale_color_manual(values=nv_AB_code_color) +
+  # scale_shape_manual(values=nv_AB_code_shape) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  coord_cartesian(
+    # ylim = c(10^(-2), 1)
+    ylim = c(0, 1)
+  ) +
+  theme_ano +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+### Boxplots LacZ+ fraction Bladder day 4 all AB
+
+```{r, fig.width=12, fig.height=8}
+lbl_x <- ""
+lbl_y <- "LacZ+ fraction"
+lbl_subtitle <- "Bladder day 4"
+df_4_mnlx_CFU %>% 
+  dplyr::filter(organ == "B") %>% 
+  dplyr::filter(TIME == 4) %>% 
+  dplyr::mutate(AB_code=factor(AB_code, levels = v_AB_code_levels)) %>% 
+  ggplot(aes(x=AB_code, y=LacZ_fraction, color=AB_code)) +
+  geom_jitter() +
+  geom_boxplot(alpha=0.1, outlier.shape=NA) +
+  # geom_boxplot(data = df_4_mnlx_CFU_Stat, aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95, y=q50), stat="identity", alpha=0.1) +
+  # scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x, n=3),
+  #             labels = scales::trans_format("log10", scales::math_format(10^.x)) ) +
+  facet_wrap(~strain) +
+  scale_color_manual(values=nv_AB_code_color) +
+  # scale_shape_manual(values=nv_AB_code_shape) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  coord_cartesian(
+    # ylim = c(10^(-2), 1)
+    ylim = c(0, 1)
+  ) +
+  theme_ano +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+
+
+
+```{r, fig.width=12, fig.height=8}
+lbl_x <- ""
+lbl_y <- "LacZ+ fraction"
+lbl_subtitle <- "Urine day 4"
+df_4_mnlx_CFU %>% 
+  dplyr::filter(organ == "U") %>% 
+  dplyr::filter(TIME == 4) %>% 
+  dplyr::mutate(AB_code=factor(AB_code, levels = v_AB_code_levels)) %>% 
+  ggplot(aes(x=AB_code, y=LacZ_fraction, color=AB_code)) +
+  geom_jitter() +
+  geom_boxplot(alpha=0.1, outlier.shape=NA) +
+  # geom_boxplot(data = df_4_mnlx_CFU_Stat, aes(ymin=q05, lower=q25, middle=q50, upper=q75, ymax=q95, y=q50), stat="identity", alpha=0.1) +
+  # scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x, n=3),
+  #             labels = scales::trans_format("log10", scales::math_format(10^.x)) ) +
+  facet_wrap(~strain) +
+  scale_color_manual(values=nv_AB_code_color) +
+  # scale_shape_manual(values=nv_AB_code_shape) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  coord_cartesian(
+    # ylim = c(10^(-2), 1)
+    ylim = c(0, 1)
+  ) +
+  theme_ano +
+  theme(axis.text.x = element_text(angle=90))
+```
+
+### Kidney
+```{r}
+str_ORGAN_TMP <- "K"
+lbl_caption <- "Kidney LacZ+ fraction"
+
+df_Stats_LacZ_p %>%
+  dplyr::filter(organ == str_ORGAN_TMP) %>% 
+  dplyr::select(strain, AB_code, organ, TIME, everything(), -organ, -OBSERVATION_UNITS) %>% 
+  dplyr::mutate(AB_code=factor(AB_code, levels = v_AB_code_levels)) %>% 
+  dplyr::mutate(num=as.integer(num)) %>% 
+  dplyr::arrange(strain, AB_code, TIME) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra() %>% 
+  flextable::merge_v(j=c("strain", "AB_code", "organ")) %>% 
+  flextable::colformat_double(digits = 2, na_str = "N/A") %>% 
+  flextable::set_caption(lbl_caption)
+
+```
+
+
+## CFU vs LacZ+ fraction
+
+Control group, Cipro 2.5 and 10 mg/kg, strain PAS, considering urine volume 1ml
+```{r, fig.width=12, fig.height=8}
+v_DAY_levels <- c(1, 2, 4, 6, 10, 16, 22)
+
+
+v_AB_code_TMP <- c("Ct", "Cipro_d002", "Cipro_d010")
+v_TIME_TMP <- c(1, 4, 6, 22)
+str_strain_TMP <- "PAS"
+
+lbl_y <- "CFU"
+lbl_x <- "Fraction LacZ+"
+lbl_subtitle <- sprintf("Strain: %s", str_strain_TMP)
+
+nv_CFU_labels <- c("K" = "Kidney", "B" = "Bladder", "U" = "Urine")
+# nv_tmpname_AB_code
+nv_AB_code_labels <- c("Ct" = "Control", "Cipro_d002" = "Ciprofloxacin\n2.5mg/kg", "Cipro_d010" = "Ciprofloxacin\n10mg/kg")
+# v_AB_code_levels
+
+nv_labels_TMP <- c(nv_CFU_labels, nv_AB_code_labels)
+
+df_4_mnlx_tmp %>% 
+  dplyr::mutate(CFU = ifelse(organ=="U", 1*OBSERVATION, organ_weight*OBSERVATION)) %>% 
+  dplyr::mutate(AB_code = factor(AB_code, levels = v_AB_code_levels)) %>% 
+  dplyr::filter(AB_code %in% v_AB_code_TMP ) %>% 
+  dplyr::filter(strain == str_strain_TMP) %>% 
+  dplyr::filter(TIME %in% v_TIME_TMP ) %>% 
+  ggplot(aes(x=LacZ_fraction, y=CFU, color=factor(TIME))) +
+  geom_point(aes(shape=factor(TIME)), size=3) +
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x, n=3),
+              labels = scales::trans_format("log10", scales::math_format(10^.x)) ) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  scale_color_manual(values=nv_DAY_color) +
+  scale_shape_manual(values=nv_DAY_shape) +
+  facet_grid(AB_code~organ, labeller = as_labeller(nv_labels_TMP)) +
+  theme_ano +
+  theme(panel.spacing = unit(1, "lines")) +
+  theme(strip.text = element_text(colour = 'white', face="bold", size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) ) +
+  theme(strip.background = element_rect(fill = "black")) #+
+  # theme(legend.position="bottom", legend.box = "horizontal")
+
+
+  
+```
+
+
+```{r}
+df_4_mnlx_tmp
+
+```
+
+
+### Bladder
+```{r}
+str_ORGAN_TMP <- "B"
+lbl_caption <- "Bladder LacZ+ fraction"
+
+df_Stats_LacZ_p %>%
+  dplyr::filter(organ == str_ORGAN_TMP) %>% 
+  dplyr::select(strain, AB_code, organ, TIME, everything(), -organ, -OBSERVATION_UNITS) %>% 
+  dplyr::mutate(AB_code=factor(AB_code, levels = v_AB_code_levels)) %>% 
+  dplyr::mutate(num=as.integer(num)) %>% 
+  dplyr::arrange(strain, AB_code, TIME) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra() %>% 
+  flextable::merge_v(j=c("strain", "AB_code", "organ")) %>% 
+  flextable::colformat_double(digits = 2, na_str = "N/A") %>% 
+  flextable::set_caption(lbl_caption)
+
+```
+
+
+
+
+
+
+# Notes
+ - Looks like for Cirpo_d010 group the Kidney weight is always high in comparision with Ct group at day 1 at least
+ - Appart from some outliers Bladder weight is more uniform.
+ - The amounts W for Ct group are higher that the others with AB, which makes sense, however why is reduced at day 1 if Antibiotic treatment is started on D2 post-infection. Something may be weird, probably an annotation problem in data. 
+ - For NIELS69 we only have 2 days in the Ct group.
+ 
+
+ - LacZ+ fraction in bladder drops pretty fast compare with Kidney and Urine.
+
+```{r}
+# df_LacZ_fraction_ALL <- DF_ALL_DATA %>% 
+#   dplyr::select(group, id, organ, DAY, AB_code, strain, LacZ_p_CFU_mL, LacZ_m_CFU_mL) %>% 
+#   dplyr::mutate(LacZ_fraction=LacZ_p_CFU_mL/(LacZ_p_CFU_mL + LacZ_m_CFU_mL))
+# 
+# df_LacZ_fraction_ALL %>% head()
+```
+
+
+
+```{r, fig.width=15, fig.height=6}
+# lbl_x <- "time (days)"
+# lbl_y <- "lacZ+ fraction"
+# df_LacZ_fraction %>% 
+#   ggplot(aes(x=DAY, y=LacZ_fraction, group_by=DAY, color=organ )) +
+#   geom_point(size=2.25, alpha=0.5) +
+#   # geom_boxplot() +
+#   geom_errorbar(
+#     data=df_LacZ_fraction_stats,
+#     aes(x=DAY, ymin=LacZ_fraction.middle, ymax=LacZ_fraction.middle), stat="identity", inherit.aes = FALSE
+#     ) +
+#   geom_line(
+#     data=df_LacZ_fraction_stats,
+#     aes(x=DAY, y=LacZ_fraction.middle), stat="identity", inherit.aes = FALSE
+#   ) +
+#   facet_wrap(~organ) +
+#   scale_color_manual(values=nv_organ_colors) +
+#   # scale_shape_manual(values=nv_DAY_shape) +
+#   scale_x_continuous(breaks = df_data_processed %>% pull(DAY) %>% unique()) +
+#   labs(x=lbl_x, y=lbl_y) +
+#   theme_ano +
+#   theme(legend.position = "none")
+```
+
+
+
+
+<!-- # Appendices -->
+
+<!-- ```{r, fig.width=12, fig.height=8} -->
+<!-- # AB_code -->
+<!-- lbl_x <- "time (days)" -->
+<!-- lbl_y <- "" -->
+<!-- str_ORGAN_TMP <- "U" -->
+<!-- df_4_mnlx_tmp %>% #pull(AB_code) %>% unique() -->
+<!--   dplyr::filter(organ == str_ORGAN_TMP) %>% -->
+<!--   ggplot(aes(x=TIME, y=OBSERVATION_LOG10, color=AB_code, shape=strain)) + -->
+<!--   geom_point(size=2) + -->
+<!--   geom_line(data=df_Stats_log10_CFU_Units %>% dplyr::filter(organ == str_ORGAN_TMP), aes(y=q50)) + -->
+<!--   geom_errorbar(data=df_Stats_log10_CFU_Units %>% dplyr::filter(organ == str_ORGAN_TMP), aes(ymin=q50, ymax=q50, y=q50), size=1) + -->
+<!--   labs(x=lbl_x, y=lbl_y) + -->
+<!--   facet_wrap(~strain) +  -->
+<!--   scale_color_manual(values=nv_AB_code_color) + -->
+<!--   scale_shape_manual(values=nv_strain_shape) + -->
+<!--   theme_ano -->
+
+<!-- ``` -->
+
+
+<!-- # CFU density data -->
+
+
+
+
+
+<!-- ```{r} -->
+<!-- df_Stats_log10_CFU_gr <- DF_ALL_DATA %>%  -->
+<!--   group_by(organ, DAY, strain, AB_code) %>%  -->
+<!--   nest() %>%  -->
+<!--   dplyr::mutate( -->
+<!--     Stats = map_df(data, ~ceor_stats(.$log10_CFU_gr, na.rm = TRUE) ) -->
+<!--   ) %>% -->
+<!--   unnest(Stats) %>% -->
+<!--   ungroup() -->
+<!--   # summarise(log10_CFU_gr) -->
+<!-- ``` -->
+
+
+<!-- ```{r} -->
+<!-- DF_ALL_DATA %>%  -->
+<!--   dplyr::filter(!AB_treatment) %>%  -->
+<!--   dplyr::filter(organ == "K") %>%  -->
+<!--   ggplot(aes(x=DAY, y=log10_CFU_gr, color=strain)) + -->
+<!--   geom_point() + -->
+<!--   facet_wrap(~strain) + -->
+<!--   scale_color_manual(values = nv_strain_color) + -->
+<!--   theme_ano -->
+<!-- ``` -->
+
+
+
+
+
+
+

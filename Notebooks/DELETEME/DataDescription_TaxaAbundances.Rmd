@@ -1,0 +1,4020 @@
+---
+title: "Taxa Description"
+author: "Carlos Olivares"
+date: "5/2/2024"
+output: 
+  html_document:
+    code_folding: hide
+    toc: TRUE
+    number_sections: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE, cache=TRUE, collapse = TRUE)
+```
+
+
+
+```{r}
+# install.packages("scales")
+source("bla3_commons.R", local = knitr::knit_global())
+```
+
+
+
+```{r}
+nv_drug_complex_color_tmp <- c(
+  "CTX" = "#800026", #"#e31a1c",
+  "CZA" = "#1f78b4",
+  "TZP" = "#33a02c"
+)
+nv_resistance_shape <- c(
+  "Yes" = 17,
+  "No" = 1
+)
+
+nv_Classes_color <- c(
+  "Candidate_blaa" = "#e31a1c",
+  "Candidate_blab1"= "#1f78b4",
+  "Candidate_blab3"= "#a6cee3",
+  "Candidate_blac" = "#6a3d9a",
+  "Candidate_blad" = "#33a02c"
+)
+
+```
+
+
+<!-- Subjects Data -->
+
+```{r}
+# v_BMI_limits
+DF_SUBJID_METADA_COMPLEX_DRUG <- read.csv("DF_SUBJID_METADA_COMPLEX_DRUG.CSV") %>%
+  dplyr::mutate(DRUG_COMPLEX=factor(DRUG_COMPLEX, levels = v_DRUG_COMPLEX_levels)) %>%
+  dplyr::mutate(ACTARMCD=factor(ACTARMCD, levels = v_ACTARMCD_levels)) %>% 
+  dplyr::mutate(
+    bmi_label=case_when(
+      bmi >= v_BMI_limits[1] & bmi< v_BMI_limits[2] ~ v_BMI_levels[1],
+      bmi >= v_BMI_limits[2] & bmi< v_BMI_limits[3] ~ v_BMI_levels[2],
+      bmi >= v_BMI_limits[3] & bmi< v_BMI_limits[4] ~ v_BMI_levels[3],
+      bmi >= v_BMI_limits[4] & bmi< v_BMI_limits[5] ~ v_BMI_levels[4],
+      bmi >= v_BMI_limits[5] & bmi< v_BMI_limits[6] ~ v_BMI_levels[5],
+      .default = NA
+    )
+  ) %>% 
+  dplyr::mutate(
+    bmi_label = factor(bmi_label, levels = v_BMI_levels)
+  )
+
+```
+
+
+<!-- samples with day and subject -->
+
+```{r}
+DF_SAMPLE_SUBJS_DAY <- read.csv("DF_SAMPLE.CSV") #%>% 
+  # dplyr::select(DAY, SUBJID, sampleID)
+
+# DT::datatable(
+#   DF_SAMPLE_SUBJS_DAY %>% 
+#     dplyr::select(DAY, SUBJID, sampleID ),
+#   filter="top"
+#   )
+```
+
+
+<!-- Taxa Abundance -->
+
+```{r}
+DF_TAXA_ABUNDANCE_w_ID <- read.csv("DF_TAXA_ABUNDANCE_w_ID.CSV") %>% 
+  dplyr::filter(!is.na(ACTARMCD)) %>% 
+  dplyr::mutate(
+    DAV = case_when(
+      str_detect(ACTARMCD, "D1") ~ "DAVD1",
+      str_detect(ACTARMCD, "D2") ~ "DAVD2",
+      .default = "NODAV"
+    )
+  ) %>% 
+  dplyr::mutate(
+    DRUG_COMPLEX=str_replace_all(str_replace_all(ACTARMCD, "D2", ""), "D1", "")
+  ) %>% 
+  dplyr::mutate(DRUG_COMPLEX = factor(DRUG_COMPLEX, levels = v_DRUG_COMPLEX_levels)) %>%  
+  dplyr::mutate(DAV = factor(DAV, levels = v_DAV_levels))
+```
+
+
+```{r}
+DF_SHANNON_BITS_BASELINE <- DF_TAXA_ABUNDANCE_w_ID %>% 
+  dplyr::filter(DAY == 1) %>% 
+  group_by(DRUG_COMPLEX, DAV, ACTARMCD, SUBJID, DAY) %>% 
+  dplyr::summarise(
+    H_bits_Baseline = H_entropy_bits(bin_RelAbun)
+  )
+
+```
+
+
+```{r}
+
+get_flx_SUBJS_DATA <- function(DF_SUBJS_DATA){
+  tmp_flx <- DF_SUBJS_DATA %>% 
+    # dplyr::filter(DRUG_COMPLEX == str_DRUG_COMPLEX_tmp) %>%
+    flextable::flextable() %>% 
+    flextable::theme_zebra(
+      odd_header = "#CFCFCF",
+      odd_body = "#EFEFEF",
+      even_header = "transparent",
+      even_body = "transparent"
+    ) %>% 
+    flextable::fontsize(size = 9) %>%
+    flextable::color(i= ~SEX == "F", j = ~SEX, color = "#dd1c77", part = "body") %>%
+    flextable::color(i= ~SEX == "M", j = ~SEX, color = "#2c7fb8", part = "body") %>%
+    flextable::color(j = ~bmi, color = scale_bmi_cm) %>% 
+    flextable::merge_v(j = c("DRUG_COMPLEX", "ACTARMCD"))
+  return(tmp_flx)
+}
+```
+
+
+# Data Description
+
+
+## Subjects Metadata {.tabset}
+
+
+
+
+### Summary
+
+```{r}
+DF_SUBJID_METADA_COMPLEX_DRUG_w_SHANNON_BITS_BASELINE <- DF_SUBJID_METADA_COMPLEX_DRUG %>% 
+  dplyr::select(-SHAPE, -COLOR, -DAVCOLOR) %>% 
+  left_join(
+    DF_SHANNON_BITS_BASELINE %>% dplyr::select(-DAY),
+    by = c("DRUG_COMPLEX", "ACTARMCD", "SUBJID")
+  )
+
+DF_SUBJID_METADA_COMPLEX_DRUG_w_SHANNON_BITS_BASELINE_Stats_01 <- DF_SUBJID_METADA_COMPLEX_DRUG_w_SHANNON_BITS_BASELINE %>% 
+  drop_na() %>% 
+  # dplyr::select(-SEX) %>% 
+  pivot_longer(cols = c("AGE", "height", "weight", "bmi", "H_bits_Baseline")) %>% 
+  group_by(name, SEX) %>% 
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$value, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data)
+
+DF_SUBJID_METADA_COMPLEX_DRUG_w_SHANNON_BITS_BASELINE_Stats_01 %>% 
+  dplyr::mutate(med.min_max = sprintf("%0.3g [%0.3g, %0.3g]", q50, min, max)) %>% 
+  dplyr::select(SEX, name, med.min_max) %>% 
+  pivot_wider(names_from = SEX, values_from = med.min_max) %>% 
+  dplyr::rename("Male" = "M", "Female" = "F") %>%
+  flextable::flextable() %>% 
+  flextable::theme_zebra()
+```
+
+
+
+```{r}
+lm_height_weigth <- lm(weight ~ height, data=DF_SUBJID_METADA_COMPLEX_DRUG_w_SHANNON_BITS_BASELINE)
+lm_height_weigth
+```
+
+
+
+```{r}
+lbl_x <- "Height (cm)"
+lbl_y <- "Weight (kg)"
+nv_strip_labels <- c(
+  "F" = "Female",
+  "M" = "Male"
+)
+lbl_caption <- "Height and weigth correlated and "
+plt <- DF_SUBJID_METADA_COMPLEX_DRUG_w_SHANNON_BITS_BASELINE %>% 
+  ggplot() +
+  geom_point(aes(x=height, y=weight, color=SEX, shape=bmi_label, label=SUBJID, label2=weight, label3=DRUG_COMPLEX), size = 2) +
+  geom_function(fun=function(x) x*lm_height_weigth$coefficients[2] + lm_height_weigth$coefficients[1] ) +
+  # facet_wrap(~SEX, labeller = as_labeller(nv_strip_labels)) +
+  # scale_color_brewer(palette = "Greens") +
+  # scale_color_gradient(low = "#fb6a4a", high = "#084594", na.value = NA) +
+  # scale_color_steps2() +
+  scale_color_manual(values = v_SEX_color) +
+  # scale_color_continuous() +
+  scale_shape_manual(values = nv_BMI_shape) +
+  
+  labs(x=lbl_x, y=lbl_y) +
+  theme_bla +
+  theme(strip.background = element_blank()) +
+  theme(strip.text = element_text(colour = 'black', size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+
+
+plotly::ggplotly(plt)
+```
+
+
+
+```{r}
+lbl_x <- "Age (years)"
+lbl_y <- "Shannon Index (bits)"
+nv_strip_labels <- c(
+  "F" = "Female",
+  "M" = "Male"
+)
+lbl_caption <- "Shannon index before antibiotic treatment without excluding data by compleness or contamination"
+lbl_color = "Body mass index"
+lbl_shape = "Body mass index"
+
+plt <- DF_SUBJID_METADA_COMPLEX_DRUG_w_SHANNON_BITS_BASELINE %>% 
+  ggplot() +
+  geom_point(aes(x=AGE, y=H_bits_Baseline, color=bmi_label, shape=bmi_label, label=SUBJID, label2=weight, label3=DRUG_COMPLEX, label4=bmi), size = 2) +
+  facet_wrap(~SEX, labeller = as_labeller(nv_strip_labels)) +
+  # scale_color_brewer(palette = "Greens") +
+  # scale_color_gradient(low = "#fb6a4a", high = "#084594", na.value = NA) +
+  # scale_color_steps2() +
+  scale_color_manual(values = nv_BMI_colors) +
+  # scale_color_continuous() +
+  scale_shape_manual(values = nv_BMI_shape) +
+  labs(x=lbl_x, y=lbl_y, caption = lbl_caption, color=lbl_color, shape=lbl_shape) +
+  theme_bla +
+  theme(strip.background = element_blank()) +
+  theme(strip.text = element_text(colour = 'black', size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+
+
+plotly::ggplotly(plt)
+```
+
+
+
+### Table Subjects
+
+```{r}
+DT::datatable(DF_SUBJID_METADA_COMPLEX_DRUG, filter="top")
+
+```
+
+
+### Table Subjects by group
+
+```{r}
+get_flx_SUBJS_DATA(DF_SUBJID_METADA_COMPLEX_DRUG)
+```
+
+
+### {-}
+
+## {-}
+
+## Treatment groups and subjects
+
+
+## Summary of subjects
+
+Make a summary of subject all groups and by DRUG_COMPLEX and DAV, 
+then use the diversity and richness for everybody too.
+
+
+
+```{r}
+DF_SUBJID_METADA_COMPLEX_DRUG %>% 
+  ggplot(aes(x=AGE, y=height)) +
+  geom_point() +
+  theme_bla
+```
+
+
+<!-- ## Data Directory Structure -->
+<!-- Data is located in saad.en-naimani/BLA-IMPACT/ -->
+
+<!-- F001_1/ -->
+<!-- F001_2/   -->
+<!-- F002/   -->
+<!-- F1_1_suite/   -->
+<!-- Jobs/   -->
+<!-- Scripts/   -->
+<!-- abundance/   -->
+<!-- frequency/ -->
+
+<!-- Directories contains sample raw data -->
+<!-- F001_1/ -->
+<!-- ```{r} -->
+<!-- DIR_F001_1 <- c( -->
+<!-- "D0002R001", "D0002R008", "D0003R001", "D0003R008", "D0004R001", "D0004R003", "D0004R008", "D0005R001", "D0005R008", "D0006R001", "D0006R003", "D0006R008", "D0008R001", "D0008R008", "D0009R008", "D0010R008", "D0012R001", "D0012R003", "D0012R008", "D0013R001", "D0013R003", "D0013R008", "D0014R003", "D0015R001", "D0015R008", "D0017R001", "D0017R003", "D0018R001", "D0018R003", "D0018R008", "D0020R001", "D0020R008", "D0021R001", "D0021R003", "D0022R001", "D0022R003", "D0022R008", "D0023R001", "D0023R003", "D0023R008", "D0024R001", "D0024R003", "D0024R008", "D0025R001", "D0025R003", "D0025R008", "D0027R001", "D0028R001", "D0028R008", "D0029R001", "D0029R008", "D0030R001", "D0030R008", "D0031R003", "D0031R008", "D0032R008", "D0033R001", "D0033R003", "D0033R008", "D0035R001", "D0035R003", "D0038R001", "D0038R003", "D0038R008", "D0039R001", "D0039R003", "D0039R008", "D0040R001", "D0040R008", "D0041R001", "D0042R003", "D0042R008", "D0044R001", "D0044R003", "D0045R001", "D0045R003", "D0046R003", "D0046R008", "D0047R001", "D0047R003", "D0048R001", "D0048R008", "D0049R001", "D0049R003", "D0050R001", "D0050R003", "D0050R008", "D0051R003", "D0051R008", "D0052R001", "D0052R003", "D0052R008", "D0053R001", "D0053R003", "D0053R008", "D0054R001", "D0054R003", "D0054R008", "D0057R001", "D0057R003", "D0058R008", "D0059R001", "D0059R003", "D0059R008", "D0060R008", "D0061R001", "D0061R003", "D0062R001", "D0062R003", "D0062R008", "D0063R001", "D0063R008", "D0065R001", "D0065R008", "D0066R003", "D0066R008", "D0067R003", "D0067R008", "D0068R001", "D0068R003", "D0068R008", "D0069R001", "D0069R003", "D0069R008", "D0070R003", "D0070R008", "D0072R008", "D0073R001", "D0073R003", "D0073R008", "D0074R001", "D0074R008", "D0075R001", "D0075R008" -->
+<!-- ) -->
+<!-- ``` -->
+
+
+
+<!-- Hmmsearch/ -->
+<!-- binning/ -->
+<!-- bla_diamond/ -->
+<!-- bla_diamond2/ -->
+<!-- diamond/ -->
+<!-- jobs/ -->
+<!-- megahit.assembly/ -->
+<!-- metaphlan/ -->
+<!-- metawrap/ -->
+<!-- mgs_beta/ -->
+<!-- prodigal/ -->
+<!-- quast_evaluation/ -->
+<!-- quast_evaluation2/ -->
+
+
+
+
+<!-- F001_2/   -->
+<!-- F002/   -->
+
+<!-- /home/saad.en-naimani/BLA-IMPACT/F001_2/binning/results/D0051R001/prodigal_bins -->
+
+
+## Contamination and Completeness {.tabset}
+
+
+
+### All data
+
+
+
+```{r, fig.height=8, fig.width=10}
+bin_completeness_thresh <- 90
+bin_contamination_thresh <- 10
+
+nv_labels_grid <- c(
+  "Ct" = "Control",
+  "CRO" = "Ceftriaxone 1g",
+  "CZA" = "Ceftazidime 2g\nAvibactam 0.5g",
+  "PTZ" = "Piperacilin 4g\nTazobactam 0.5g",
+  "NODAV" = "No DAV132",
+  "DAVD1" = "7.5g DAV132",
+  "DAVD2" = "12g DAV132"
+)
+
+lbl_title <- ""
+DF_TAXA_ABUNDANCE_w_ID %>% 
+  # dplyr::filter(bin_completeness >= bin_completeness_thresh) %>%
+  # dplyr::filter(bin_contamination <= bin_contamination_thresh) %>%
+  ggplot(aes(x=bin_completeness, y=bin_contamination)) +
+  # geom_point(alpha=0.25) +
+  geom_bin2d() +
+  geom_vline(xintercept = bin_completeness_thresh,  color="red") +
+  geom_hline(yintercept = bin_contamination_thresh, color="red") +
+  # facet_grid(DAV~DRUG_COMPLEX, labeller = as_labeller(nv_labels_grid)) +
+  # geom_density_2d() +
+  # stat_density_2d(aes(fill = ..level..), geom = "polygon") +
+  # geom_hex() +
+  scale_fill_continuous(type = "viridis") +
+  theme_bla +
+  theme(strip.background = element_blank()) +
+  theme(strip.text = element_text(colour = 'black', size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+
+```
+
+
+### by groups
+
+
+
+```{r, fig.height=8, fig.width=10}
+bin_completeness_thresh <- 90
+bin_contamination_thresh <- 10
+
+nv_labels_grid <- c(
+  "Ct" = "Control",
+  "CRO" = "Ceftriaxone 1g",
+  "CZA" = "Ceftazidime 2g\nAvibactam 0.5g",
+  "PTZ" = "Piperacilin 4g\nTazobactam 0.5g",
+  "NODAV" = "No DAV132",
+  "DAVD1" = "7.5g DAV132",
+  "DAVD2" = "12g DAV132"
+)
+
+lbl_title <- ""
+DF_TAXA_ABUNDANCE_w_ID %>% 
+  # dplyr::filter(bin_completeness >= bin_completeness_thresh) %>%
+  # dplyr::filter(bin_contamination <= bin_contamination_thresh) %>%
+  ggplot(aes(x=bin_completeness, y=bin_contamination)) +
+  # geom_point(alpha=0.25) +
+  geom_bin2d() +
+  geom_vline(xintercept = bin_completeness_thresh,  color="red") +
+  geom_hline(yintercept = bin_contamination_thresh, color="red") +
+  facet_grid(DAV~DRUG_COMPLEX, labeller = as_labeller(nv_labels_grid)) +
+  # geom_density_2d() +
+  # stat_density_2d(aes(fill = ..level..), geom = "polygon") +
+  # geom_hex() +
+  scale_fill_continuous(type = "viridis") +
+  theme_bla +
+  theme(strip.background = element_blank()) +
+  theme(strip.text = element_text(colour = 'black', size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+
+```
+
+### {-}
+
+## {-}
+
+
+
+
+```{r}
+# DF_TAXA_ABUNDANCE_w_ID %>%
+#   dplyr::filter(bin_contamination > bin_contamination_thresh)
+```
+
+## Richness
+
+```{r}
+DF_RICHNESS_SHTGN <- DF_TAXA_ABUNDANCE_w_ID %>% 
+  group_by(DRUG_COMPLEX, DAV, ACTARMCD, SUBJID, DAY, sampleID) %>% 
+  dplyr::summarise(
+    Richness = length(unique(bin_name))
+  ) %>% 
+  ungroup()
+
+DF_RICHNESS_SHTGN %>%
+  dplyr::filter(is.na(ACTARMCD))
+
+DF_RICHNESS_SHTGN_Stats <- DF_RICHNESS_SHTGN %>% 
+  group_by(DRUG_COMPLEX, DAV, ACTARMCD, DAY) %>% 
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$Richness, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data)
+```
+
+
+
+
+### Completeness and Contamination thresholds comparisons {.tabset}
+
+```{r}
+# dplyr::filter(bin_completeness >= bin_completeness_thresh) %>%
+  # dplyr::filter(bin_contamination <= bin_contamination_thresh) %>%
+
+v_bin_completeness_thresh  <- c(0, 5, 10, 25, 50, 70, 80, 90)
+v_bin_contamination_thresh <- c(0, 5, 10, 15, 50, 100)
+
+f_apply_tmp <- function(DF_TAXA_ABUNDANCE_w_ID, bin_completeness_thresh_ii, v_bin_contamination_thresh){
+  
+  df_tmp <- lapply(
+    seq(1, length(v_bin_contamination_thresh)),
+    function (jj) DF_TAXA_ABUNDANCE_w_ID %>% 
+      dplyr::filter(bin_completeness >= bin_completeness_thresh_ii ) %>%
+      dplyr::filter(bin_contamination <= v_bin_contamination_thresh[jj] ) %>%
+      group_by(DRUG_COMPLEX, DAV, ACTARMCD, SUBJID, DAY, sampleID) %>% 
+      dplyr::summarise(
+        Richness = length(unique(bin_name))
+      ) %>% 
+      ungroup() %>% 
+      dplyr::mutate(
+        bin_completeness_thresh  = bin_completeness_thresh_ii,
+        bin_contamination_thresh = v_bin_contamination_thresh[jj]
+      )
+  ) %>% 
+    bind_rows()
+  return(df_tmp)
+}
+
+
+DF_RICHNESS_SHTGN_w_THRESHOLD <- lapply(
+  seq(1, length(v_bin_completeness_thresh)),
+  function (ii) f_apply_tmp(DF_TAXA_ABUNDANCE_w_ID, v_bin_completeness_thresh[ii], v_bin_contamination_thresh)
+) %>% 
+  bind_rows()
+
+```
+
+
+
+
+```{r}
+get_plt_Richness_thresholds <- function(str_DRUG_COMPLEX_tmp, str_DAV_tmp){
+  lbl_x <- "Bin completeness threshold (%)"
+  lbl_y <- "Richness"
+  nv_DRUG_COMPLEX_labels <- setNames(str_replace_all(v_DRUG_COMPLEX_labels, "\n", "/"), v_DRUG_COMPLEX_levels)
+  nv_DAV_labels <- setNames(v_DAV_labels, v_DAV_levels)
+  lbl_title <- sprintf("%s %s", nv_DRUG_COMPLEX_labels[str_DRUG_COMPLEX_tmp], nv_DAV_labels[str_DAV_tmp] )
+
+  plt_tmp <- DF_RICHNESS_SHTGN_w_THRESHOLD %>% 
+    dplyr::filter(DRUG_COMPLEX == str_DRUG_COMPLEX_tmp) %>% 
+    dplyr::filter(DAV == str_DAV_tmp) %>% 
+    dplyr::mutate(bin_contamination_thresh=factor(bin_contamination_thresh)) %>% 
+    # pull(bin_completeness_thresh) %>% unique()
+    ggplot( aes(x=bin_completeness_thresh, y=Richness, fill=bin_contamination_thresh, group=interaction(bin_completeness_thresh, bin_contamination_thresh)) ) +
+    geom_boxplot() +
+    # geom_jitter(width = 0.5, alpha=0.25) +
+    facet_grid(DAY~.) + # , labeller = as_labeller(nv_labels_grid_tmp)
+    labs(x=lbl_x, y=lbl_y, title = lbl_title) +
+    # coord_cartesian(
+    #   ylim = c(0, 6.2)
+    # ) +
+    scale_x_continuous(breaks = unique(DF_RICHNESS_SHTGN_w_THRESHOLD$bin_completeness_thresh)) +
+    theme_bla +
+    theme(legend.position = "bottom") +
+    theme(strip.background = element_blank()) +
+    theme(strip.text = element_text(colour = 'black', size = 15)) +
+    theme(panel.border = element_rect(colour = "black", fill = NA) )
+  return(plt_tmp)
+}
+
+
+```
+
+
+
+
+```{r, results='asis', fig.height=8, fig.width=12}
+str_DRUG_COMPLEX_tmp <- "Ct"
+str_DAV_tmp <- "NODAV"
+cat("#### ", str_DRUG_COMPLEX_tmp, " ", str_DAV_tmp)
+cat("\n")
+cat("\n")
+plt_tmp <- get_plt_Richness_thresholds(str_DRUG_COMPLEX_tmp, str_DAV_tmp)
+print(plt_tmp)
+cat("\n")
+cat("\n")
+```
+
+
+
+```{r, results='asis', fig.height=8, fig.width=12}
+
+str_DRUG_COMPLEX_tmp <- "PTZ"
+for(str_DAV_tmp in v_DAV_levels){
+  cat("#### ", str_DRUG_COMPLEX_tmp, " ", str_DAV_tmp)
+  cat("\n")
+  cat("\n")
+  plt_tmp <- get_plt_Richness_thresholds(str_DRUG_COMPLEX_tmp, str_DAV_tmp)
+  print(plt_tmp)
+  cat("\n")
+  cat("\n")
+}
+
+```
+
+
+
+
+
+```{r, results='asis', fig.height=8, fig.width=12}
+
+str_DRUG_COMPLEX_tmp <- "CZA"
+for(str_DAV_tmp in v_DAV_levels){
+  cat("#### ", str_DRUG_COMPLEX_tmp, " ", str_DAV_tmp)
+  cat("\n")
+  cat("\n")
+  plt_tmp <- get_plt_Richness_thresholds(str_DRUG_COMPLEX_tmp, str_DAV_tmp)
+  print(plt_tmp)
+  cat("\n")
+  cat("\n")
+}
+
+```
+
+
+
+```{r, results='asis', fig.height=8, fig.width=12}
+
+str_DRUG_COMPLEX_tmp <- "CRO"
+for(str_DAV_tmp in v_DAV_levels){
+  cat("#### ", str_DRUG_COMPLEX_tmp, " ", str_DAV_tmp)
+  cat("\n")
+  cat("\n")
+  plt_tmp <- get_plt_Richness_thresholds(str_DRUG_COMPLEX_tmp, str_DAV_tmp)
+  print(plt_tmp)
+  cat("\n")
+  cat("\n")
+}
+
+```
+
+
+#### {-}
+
+
+
+### {-}
+
+
+
+
+## Shannon Index
+
+```{r}
+DF_SHANNON_bits_SHTGN <- DF_TAXA_ABUNDANCE_w_ID %>% 
+  group_by(DRUG_COMPLEX, DAV, ACTARMCD, SUBJID, DAY, sampleID) %>% 
+  dplyr::summarise(
+    H_bits = H_entropy_bits(bin_RelAbun)
+  ) %>% 
+  ungroup()
+
+DF_SHANNON_bits_SHTGN %>%
+  dplyr::filter(is.na(ACTARMCD))
+
+DF_SHANNON_bits_SHTGN_Stats <- DF_SHANNON_bits_SHTGN %>% 
+  group_by(DRUG_COMPLEX, DAV, ACTARMCD, DAY) %>% 
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$H_bits, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data)
+```
+
+### Completeness and Contamination thresholds comparisons {.tabset}
+
+```{r}
+# dplyr::filter(bin_completeness >= bin_completeness_thresh) %>%
+  # dplyr::filter(bin_contamination <= bin_contamination_thresh) %>%
+
+v_bin_completeness_thresh  <- c(0, 5, 10, 25, 50, 70, 80, 90)
+v_bin_contamination_thresh <- c(0, 5, 10, 15, 50, 100)
+
+f_apply_tmp <- function(DF_TAXA_ABUNDANCE_w_ID, bin_completeness_thresh_ii, v_bin_contamination_thresh){
+  
+  df_tmp <- lapply(
+    seq(1, length(v_bin_contamination_thresh)),
+    function (jj) DF_TAXA_ABUNDANCE_w_ID %>% 
+      dplyr::filter(bin_completeness >= bin_completeness_thresh_ii ) %>%
+      dplyr::filter(bin_contamination <= v_bin_contamination_thresh[jj] ) %>%
+      group_by(DRUG_COMPLEX, DAV, ACTARMCD, SUBJID, DAY, sampleID) %>% 
+      dplyr::summarise(
+        H_bits = H_entropy_bits(bin_RelAbun)
+      ) %>% 
+      ungroup() %>% 
+      dplyr::mutate(
+        bin_completeness_thresh  = bin_completeness_thresh_ii,
+        bin_contamination_thresh = v_bin_contamination_thresh[jj]
+      )
+  ) %>% 
+    bind_rows()
+  # df_tmp <- DF_TAXA_ABUNDANCE_w_ID %>% 
+  #   dplyr::filter(bin_completeness >= bin_completeness_thresh_ii ) %>%
+  #   dplyr::filter(bin_contamination <= bin_contamination_thresh_jj ) %>%
+  #   group_by(DRUG_COMPLEX, DAV, ACTARMCD, SUBJID, DAY, sampleID) %>% 
+  #   dplyr::summarise(
+  #     H_bits = H_entropy_bits(bin_RelAbun)
+  #   ) %>% 
+  #   ungroup() %>% 
+  #   dplyr::mutate(
+  #     bin_completeness_thresh  = bin_completeness_thresh_ii,
+  #     bin_contamination_thresh = bin_contamination_thresh_jj
+  #   )
+  return(df_tmp)
+}
+
+
+DF_SHANNON_bits_SHTGN_w_THRESHOLD <- lapply(
+  seq(1, length(v_bin_completeness_thresh)),
+  function (ii) f_apply_tmp(DF_TAXA_ABUNDANCE_w_ID, v_bin_completeness_thresh[ii], v_bin_contamination_thresh)
+) %>% 
+  bind_rows()
+
+```
+
+
+```{r}
+get_plt_Shannon_thresholds <- function(str_DRUG_COMPLEX_tmp, str_DAV_tmp){
+  lbl_x <- "Bin completeness threshold (%)"
+  lbl_y <- "Shannon Index (bits)"
+  nv_DRUG_COMPLEX_labels <- setNames(str_replace_all(v_DRUG_COMPLEX_labels, "\n", "/"), v_DRUG_COMPLEX_levels)
+  nv_DAV_labels <- setNames(v_DAV_labels, v_DAV_levels)
+  lbl_title <- sprintf("%s %s", nv_DRUG_COMPLEX_labels[str_DRUG_COMPLEX_tmp], nv_DAV_labels[str_DAV_tmp] )
+
+  plt_tmp <- DF_SHANNON_bits_SHTGN_w_THRESHOLD %>% 
+    dplyr::filter(DRUG_COMPLEX == str_DRUG_COMPLEX_tmp) %>% 
+    dplyr::filter(DAV == str_DAV_tmp) %>% 
+    dplyr::mutate(bin_contamination_thresh=factor(bin_contamination_thresh)) %>% 
+    # pull(bin_completeness_thresh) %>% unique()
+    ggplot( aes(x=bin_completeness_thresh, y=H_bits, fill=bin_contamination_thresh, group=interaction(bin_completeness_thresh, bin_contamination_thresh)) ) +
+    geom_boxplot() +
+    # geom_jitter(width = 0.5, alpha=0.25) +
+    facet_grid(DAY~.) + # , labeller = as_labeller(nv_labels_grid_tmp)
+    labs(x=lbl_x, y=lbl_y, title = lbl_title) +
+    coord_cartesian(
+      ylim = c(0, 6.2)
+    ) +
+    scale_x_continuous(breaks = unique(DF_SHANNON_bits_SHTGN_w_THRESHOLD$bin_completeness_thresh)) +
+    theme_bla +
+    theme(legend.position = "bottom") +
+    theme(strip.background = element_blank()) +
+    theme(strip.text = element_text(colour = 'black', size = 15)) +
+    theme(panel.border = element_rect(colour = "black", fill = NA) )
+  return(plt_tmp)
+}
+
+
+```
+
+
+
+```{r, results='asis', fig.height=8, fig.width=12}
+str_DRUG_COMPLEX_tmp <- "Ct"
+str_DAV_tmp <- "NODAV"
+cat("#### ", str_DRUG_COMPLEX_tmp, " ", str_DAV_tmp)
+cat("\n")
+cat("\n")
+plt_tmp <- get_plt_Shannon_thresholds(str_DRUG_COMPLEX_tmp, str_DAV_tmp)
+print(plt_tmp)
+cat("\n")
+cat("\n")
+```
+
+
+
+```{r, results='asis', fig.height=8, fig.width=12}
+
+str_DRUG_COMPLEX_tmp <- "CRO"
+str_DAV_tmp <- "NODAV"
+for(str_DAV_tmp in v_DAV_levels){
+  cat("#### ", str_DRUG_COMPLEX_tmp, " ", str_DAV_tmp)
+  cat("\n")
+  cat("\n")
+  plt_tmp <- get_plt_Shannon_thresholds(str_DRUG_COMPLEX_tmp, str_DAV_tmp)
+  print(plt_tmp)
+  cat("\n")
+  cat("\n")
+}
+
+```
+
+```{r, results='asis', fig.height=8, fig.width=12}
+
+str_DRUG_COMPLEX_tmp <- "CZA"
+for(str_DAV_tmp in v_DAV_levels){
+  cat("#### ", str_DRUG_COMPLEX_tmp, " ", str_DAV_tmp)
+  cat("\n")
+  cat("\n")
+  plt_tmp <- get_plt_Shannon_thresholds(str_DRUG_COMPLEX_tmp, str_DAV_tmp)
+  print(plt_tmp)
+  cat("\n")
+  cat("\n")
+}
+
+```
+
+
+```{r, results='asis', fig.height=8, fig.width=12}
+
+str_DRUG_COMPLEX_tmp <- "PTZ"
+for(str_DAV_tmp in v_DAV_levels){
+  cat("#### ", str_DRUG_COMPLEX_tmp, " ", str_DAV_tmp)
+  cat("\n")
+  cat("\n")
+  plt_tmp <- get_plt_Shannon_thresholds(str_DRUG_COMPLEX_tmp, str_DAV_tmp)
+  print(plt_tmp)
+  cat("\n")
+  cat("\n")
+}
+
+```
+
+#### {-}
+
+
+
+### {-}
+
+
+
+
+
+
+
+
+
+
+<!-- ```{r, fig.height=8, fig.width=10} -->
+
+
+<!-- nv_labels_grid <- c( -->
+<!--   "Ct" = "Control", -->
+<!--   "CRO" = "Ceftriaxone 1g", -->
+<!--   "CZA" = "Ceftazidime 2g\nAvibactam 0.5g", -->
+<!--   "PTZ" = "Piperacilin 4g\nTazobactam 0.5g", -->
+<!--   "NODAV" = "No DAV132", -->
+<!--   "DAVD1" = "7.5g DAV132", -->
+<!--   "DAVD2" = "12g DAV132" -->
+<!-- ) -->
+
+
+<!-- lbl_y <- "Shannon (bits)" -->
+<!-- lbl_x <- "Time (days)" -->
+<!-- DF_SHANNON_bits_SHTGN_Stats %>%  -->
+<!--   ggplot(aes(x=DAY, color=DRUG_COMPLEX, fill=DRUG_COMPLEX, group=ACTARMCD)) + -->
+<!--   geom_line(aes(y=q50)) + -->
+<!--   geom_ribbon(aes(ymin=q25, ymax=q75), alpha=0.25 ) + -->
+<!--   facet_grid(DAV~DRUG_COMPLEX, labeller = as_labeller(nv_labels_grid)) + -->
+<!--   labs( -->
+<!--     x=lbl_x, -->
+<!--     y=lbl_y -->
+<!--   ) + -->
+<!--   scale_color_manual(values = nv_DRUG_COMPLEX_color) + -->
+<!--   scale_fill_manual(values = nv_DRUG_COMPLEX_color) + -->
+<!--   theme_bla + -->
+<!--   theme(strip.background = element_blank()) + -->
+<!--   theme(strip.text = element_text(colour = 'black', size = 15)) + -->
+<!--   theme(panel.border = element_rect(colour = "black", fill = NA) ) -->
+
+<!-- ``` -->
+
+
+
+<!-- ```{r, fig.height=4, fig.width=10} -->
+<!-- lbl_y <- "Shannon (bits)" -->
+<!-- lbl_x <- "Time (days)" -->
+<!-- DF_SHANNON_bits_SHTGN_Stats %>%  -->
+<!--   ggplot(aes(x=DAY, color=DAV, fill=DAV, group=ACTARMCD)) + -->
+<!--   geom_line(aes(y=q50)) + -->
+<!--   geom_ribbon(aes(ymin=q25, ymax=q75), alpha=0.25 ) + -->
+<!--   facet_grid(.~DRUG_COMPLEX, labeller = as_labeller(nv_labels_grid)) + -->
+<!--   labs( -->
+<!--     x=lbl_x, -->
+<!--     y=lbl_y -->
+<!--   ) + -->
+<!--   scale_color_manual(values = nv_DAV_color) + -->
+<!--   scale_fill_manual(values = nv_DAV_color) + -->
+<!--   theme_bla + -->
+<!--   theme(strip.background = element_blank()) + -->
+<!--   theme(strip.text = element_text(colour = 'black', size = 15)) + -->
+<!--   theme(panel.border = element_rect(colour = "black", fill = NA) ) -->
+
+<!-- ``` -->
+
+
+
+<!-- ```{r, fig.height=8, fig.width=10} -->
+<!-- lbl_y <- "Shannon (bits)" -->
+<!-- lbl_x <- "Time (days)" -->
+<!-- DF_SHANNON_bits_SHTGN_Stats %>%  -->
+<!--   ggplot(aes(x=DAY, fill=DAV, group=DAY)) + -->
+<!--   geom_boxplot(aes(ymin = q05, lower=q25, middle=q50, upper=q75, ymax=q95), stat="identity") + -->
+<!--   # geom_line(aes(y=q50)) + -->
+<!--   # geom_ribbon(aes(ymin=q25, ymax=q75), alpha=0.25 ) + -->
+<!--   facet_grid(DAV~DRUG_COMPLEX, labeller = as_labeller(nv_labels_grid)) + -->
+<!--   labs( -->
+<!--     x=lbl_x, -->
+<!--     y=lbl_y -->
+<!--   ) + -->
+<!--   # scale_color_manual(values = nv_DAV_color) + -->
+<!--   scale_fill_manual(values = nv_DAV_color) + -->
+<!--   theme_bla + -->
+<!--   theme(strip.background = element_blank()) + -->
+<!--   theme(strip.text = element_text(colour = 'black', size = 15)) + -->
+<!--   theme(panel.border = element_rect(colour = "black", fill = NA) ) -->
+
+<!-- ``` -->
+
+
+
+```{r}
+
+# DF_TAXA_ABUNDANCE_w_ID_THRESH <- DF_TAXA_ABUNDANCE_w_ID %>% 
+#   dplyr::filter(bin_completeness >= bin_completeness_thresh) %>% 
+#   dplyr::filter(bin_contamination <= bin_contamination_thresh)
+```
+
+
+<!-- ```{r} -->
+<!-- # str_SUBJID_TMP <- "10078" -->
+<!-- str_SUBJID_TMP <- "10051" -->
+<!-- str_ACTARMCD_TMP <- "PTZ" -->
+
+
+<!-- # DF_TAXA_ABUNDANCE_w_ID_TMP %>% pull(bin_classification) %>% unique() -->
+
+<!-- DF_TAXA_ABUNDANCE_w_ID_TMP <-  DF_TAXA_ABUNDANCE_w_ID %>% -->
+<!--   # dplyr::filter(bin_completeness >= bin_completeness_thresh) %>%  -->
+<!--   # dplyr::filter(bin_contamination <= 5) %>% -->
+<!--   dplyr::filter(ACTARMCD == str_ACTARMCD_TMP ) %>% -->
+<!--   dplyr::filter(SUBJID == str_SUBJID_TMP ) %>% -->
+<!--   dplyr::filter(id_tax_species == 44)  -->
+
+<!-- plt <- DF_TAXA_ABUNDANCE_w_ID_TMP %>%  -->
+<!--   ggplot(aes(x=DAY, y=bin_RelAbun, group=SUBJID, color = id_tax_species)) + -->
+<!--   geom_point() + -->
+<!--   geom_line() + -->
+<!--   scale_y_log10() + -->
+<!--   theme_bla -->
+
+<!-- plotly::ggplotly(plt) -->
+<!-- ``` -->
+
+
+
+```{r}
+# DF_TAXA_ABUNDANCE_w_ID %>% 
+#   dplyr::select(ACTARMCD, SUBJID, DAY, sampleID) %>% distinct()
+```
+
+
+```{r}
+# DF_TAXA_ABUNDANCE_w_ID %>% 
+#   group_by(ACTARMCD, SUBJID, DAY, sampleID, id_tax_species) %>% 
+#   summarise(nn=n())
+```
+
+
+
+```{r}
+# DF_TAXA_ABUNDANCE_w_ID %>% 
+#   dplyr::filter(sampleID == "0003.R008") %>% 
+#   dplyr::filter(id_tax_species == 1163)
+# 
+```
+
+
+
+```{r}
+# DF_TAXA_ABUNDANCE_w_ID %>% 
+#   dplyr::filter(ACTARMCD == str_ACTARMCD_TMP ) %>%
+#   dplyr::filter(SUBJID == 10051) %>% 
+#   dplyr::filter(id_tax_species == 44)
+
+```
+
+
+
+```{r}
+df_full_table_final <- read.csv("full_table_final.tsv", sep = '\t')
+```
+
+
+```{r}
+bin_completeness_thresh <- 90
+bin_contamination_thresh <- 10
+
+df_full_table_final_MAG_flag <- df_full_table_final %>%
+  dplyr::mutate(b_MAG=ifelse(bin_completeness_thresh > bin_completeness & bin_contamination < bin_contamination_thresh, TRUE, FALSE ))
+```
+
+
+
+```{r}
+# df_full_table_final_MAG_flag %>% 
+#   dplyr::filter(!b_MAG)
+```
+
+
+```{r}
+
+# df_full_table_final_MAG_flag %>% 
+#   dplyr::group_by(b_MAG) %>% 
+#   summarise(
+#     nn = n()
+#   )
+```
+
+
+```{r}
+df_full_table_final_MAG_flag_02 <- df_full_table_final_MAG_flag %>%
+  group_by(sample) %>% 
+  dplyr::mutate(
+    bin_RelAbun_NOMAGs = bin_abundance/sum(bin_abundance, na.rm = TRUE),
+    bin_RelAbun_MAGs   = ifelse(b_MAG, bin_abundance/sum(bin_abundance[b_MAG], na.rm = TRUE), NA)
+  ) %>% 
+  ungroup() %>% 
+  dplyr::mutate(sampleID = str_replace_all(sample, "D", "")) %>% 
+  dplyr::mutate(sampleID = str_replace_all(sampleID, "_", "")) %>% 
+  dplyr::mutate(sampleID = str_replace_all(sampleID, "R", ".R")) %>% 
+  dplyr::left_join(
+    DF_TAXA_ABUNDANCE_w_ID %>% 
+      dplyr::select(ACTARMCD, SUBJID, DAY, sampleID) %>% 
+      distinct() %>% 
+      dplyr::mutate(DRUG_COMPLEX = str_replace_all(str_replace_all(ACTARMCD, "D2", ""), "D1", "") ) %>% 
+      dplyr::mutate(DAV = case_when(
+        str_detect(ACTARMCD, "D1") ~ "DAVD1",
+        str_detect(ACTARMCD, "D2") ~ "DAVD2",
+        !(str_detect(ACTARMCD, "D1") | str_detect(ACTARMCD, "D2")) ~ "NODAV",
+        .default = NA
+      ) ),
+    by=c("sampleID")
+  )
+  # group_by(sample, b_MAG) %>%  
+  # dplyr::mutate(
+  #   bin_RelAbun_MAGs   = ifelse(b_MAG, bin_abundance/sum(bin_abundance[b_MAG], NA), na.rm = TRUE)
+  # ) %>% 
+  # ungroup()
+```
+
+
+
+```{r}
+# df_full_table_final_MAG_flag_02 %>% 
+#   dplyr::filter(is.na(DRUG_COMPLEX))
+```
+
+
+```{r}
+df_full_table_final_MAG_flag_02 %>% 
+  ggplot(aes(x=bin_RelAbun_NOMAGs, y=bin_RelAbun_MAGs)) +
+  geom_point() +
+  facet_grid(DRUG_COMPLEX~DAV) +
+  theme_bla
+```
+
+
+
+
+# Resistant genes
+
+TODO: 
+I need to look for the connections with the taxa at each subject.
+
+
+## Beta-lactamases resistant genes.
+
+Genes tested in vitro to determine resistance to antibiotic, data provided by Etienne excel file
+
+```{r}
+BLA_IMPACT_betalactamases <- read.csv("BLA_IMPACT_betalactamases_corrected.CSV")
+BLA_IMPACT_betalactamases_SELECTED <- BLA_IMPACT_betalactamases %>% 
+  dplyr::filter(Selection_after_filters == "Yes") %>% 
+  dplyr::filter(Synthesis == "Yes") %>% 
+  dplyr::filter(TZP_MIC != "NT" ) %>% 
+  dplyr::rename("gene_ref_id_.subject." = "Symbol")
+```
+
+
+```{r}
+# dplyr::filter(TZP_MIC %in% c("NT", "0.5"))
+BLA_IMPACT_betalactamases_SELECTED %>% 
+  write.csv("BLA_IMPACT_betalactamases_SELECTED_corrected.CSV", row.names = FALSE)
+
+BLA_IMPACT_betalactamases_SELECTED %>% 
+  DT::datatable(filter = "top")
+```
+
+
+```{r}
+# BLA_IMPACT_betalactamases
+  # dplyr::select(Symbol, contains("_MIC"), contains("_R")) %>% 
+
+BLA_IMPACT_betalactamases_AB_resistance <- bind_rows(
+  list(
+    BLA_IMPACT_betalactamases %>% 
+      select(-CTX_MIC, -CTX_R, -CZA_MIC, -CZA_R ) %>% 
+      dplyr::mutate(DRUG_COMPLEX = "TZP") %>% 
+      dplyr::rename("MIC" = "TZP_MIC", "R" = "TZP_R"),
+    BLA_IMPACT_betalactamases %>% 
+      select(-TZP_MIC, -TZP_R, -CZA_MIC, -CZA_R ) %>% 
+      dplyr::mutate(DRUG_COMPLEX = "CTX") %>% 
+      dplyr::rename("MIC" = "CTX_MIC", "R" = "CTX_R"),
+    BLA_IMPACT_betalactamases %>% 
+      select(-TZP_MIC, -TZP_R, -CTX_MIC, -CTX_R ) %>% 
+      dplyr::mutate(DRUG_COMPLEX = "CZA") %>% 
+      dplyr::rename("MIC" = "CZA_MIC", "R" = "CZA_R")
+  )
+) %>% 
+  dplyr::rename("gene_ref_id_.subject." = "Symbol")
+```
+
+
+How we use this phenotypes:  What this PASE, ESBL, etc mean?
+
+```{r, results='asis', fig.height=8, fig.width=12}
+
+# nv_DRUG_COMPLEX_color
+
+BLA_IMPACT_betalactamases_AB_resistance %>% 
+  dplyr::select(gene_ref_id_.subject., Classe, DRUG_COMPLEX, MIC, R, Phenotype, Received_IAME.) %>% 
+  group_by(Classe, DRUG_COMPLEX, R) %>% 
+  summarise(Counts=n()) %>% 
+  ggplot() +
+  geom_col(aes(x=R, y=Counts, fill=DRUG_COMPLEX), stat = "identity") +
+  # geom_bar(aes(x=R, y=Counts, color=Classe), stat = "identity") +
+  # geom_point(aes(x=R, y=Counts, color=Classe) ) +
+  facet_wrap(~Classe) +
+  scale_fill_manual(values = nv_drug_complex_color_tmp) +
+  theme_bla +
+  theme(legend.position = "bottom") +
+  theme(strip.background = element_blank()) +
+  theme(strip.text = element_text(colour = 'black', size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+
+  # pull(R) %>% unique()
+  # pull(Received_IAME.) %>% unique()
+  # pull(Phenotype) %>% unique()
+  
+```
+
+
+
+
+
+```{r, results='asis', fig.height=4, fig.width=12}
+# nv_DRUG_COMPLEX_color
+
+```
+
+
+
+
+```{r, results='asis', fig.height=4, fig.width=12}
+lbl_x <- "Resistant to ATB"
+lbl_y <- "Number of Genes"
+plt_tmp <- BLA_IMPACT_betalactamases_AB_resistance %>% 
+  dplyr::select(gene_ref_id_.subject., Classe, DRUG_COMPLEX, MIC, R, Phenotype, Received_IAME.) %>% 
+  group_by(Classe, DRUG_COMPLEX, R) %>% 
+  summarise(Counts=n()) %>% 
+  ggplot() +
+  geom_col(aes(x=R, y=Counts, fill=Classe), position="dodge", stat = "identity") +
+  # geom_bar(aes(x=R, y=Counts, color=Classe), stat = "identity") +
+  # geom_point(aes(x=R, y=Counts, color=Classe) ) +
+  facet_wrap(~DRUG_COMPLEX) +
+  # scale_fill_manual(values = nv_drug_complex_color_tmp) +
+  scale_fill_manual(values = nv_Classes_color) +
+  labs(x=lbl_x, y=lbl_y) +
+  theme_bla +
+  theme(legend.position = "bottom") +
+  theme(legend.position = "bottom") +
+  theme(strip.background = element_blank()) +
+  theme(strip.text = element_text(colour = 'black', size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+
+  # pull(R) %>% unique()
+  # pull(Received_IAME.) %>% unique()
+  # pull(Phenotype) %>% unique()
+
+# plotly::ggplotly(plt_tmp)
+plt_tmp
+
+```
+
+
+Only resistant genes, assumed or not
+
+
+```{r, results='asis', fig.height=4, fig.width=12}
+BLA_IMPACT_betalactamases_AB_resistance %>% 
+  dplyr::select(gene_ref_id_.subject., Classe, DRUG_COMPLEX, MIC, R, Phenotype, Received_IAME.) %>% 
+  dplyr::filter(R %in% c("Yes", "A_Yes")) %>% 
+  group_by(Classe, DRUG_COMPLEX, R) %>% 
+  summarise(Counts=n()) %>% 
+  ggplot() +
+  geom_col(aes(x=R, y=Counts, fill=Classe), position="dodge", stat = "identity") +
+  # geom_bar(aes(x=R, y=Counts, color=Classe), stat = "identity") +
+  # geom_point(aes(x=R, y=Counts, color=Classe) ) +
+  facet_wrap(~DRUG_COMPLEX) +
+  # scale_fill_manual(values = nv_drug_complex_color_tmp) +
+  scale_fill_manual(values = nv_Classes_color) +
+  theme_bla +
+  theme(legend.position = "bottom") +
+  theme(strip.background = element_blank()) +
+  theme(strip.text = element_text(colour = 'black', size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+
+  # pull(R) %>% unique()
+  # pull(Received_IAME.) %>% unique()
+  # pull(Phenotype) %>% unique()
+```
+Blaa is the most common betalactamase class for the three tested beta-lactams.
+I would like to compare the sequences of these classes.
+
+
+### MIC and Resistance
+
+#### All Beta-lactamases
+
+```{r}
+# BLA_IMPACT_betalactamases_AB_resistance %>% 
+#   dplyr::select(gene_ref_id_.subject., Classe, DRUG_COMPLEX, MIC, R, Phenotype, Received_IAME., contains("Abundance"), Protein.size )
+```
+
+
+
+#### Selected Beta-lactamases
+
+```{r, fig.height=6, fig.width=18}
+# nv_DRUG_COMPLEX_color
+nv_drug_complex_color_tmp <- c(
+  "CTX" = "#e31a1c",
+  "CZA" = "#1f78b4",
+  "TZP" = "#33a02c"
+)
+nv_resistance_shape <- c(
+  "Yes" = 17,
+  "No" = 1
+)
+df_tmp <- BLA_IMPACT_betalactamases_SELECTED %>%
+  # dplyr::select(gene_ref_id_.subject., contains("_MIC"), contains("_R")) %>% #pull(CZA_MIC) %>% unique()
+  dplyr::mutate( TZP_MIC = as.numeric(TZP_MIC) ) %>% 
+  dplyr::mutate( CTX_MIC = as.numeric(str_replace_all(CTX_MIC, ">256", "256")) ) %>% 
+  dplyr::mutate( CZA_MIC = as.numeric(CZA_MIC) ) 
+
+
+# bind_rows(
+#   list(
+#     df_tmp %>% select(-CTX_MIC, -CTX_R, -CZA_MIC, -CZA_R ) %>% dplyr::mutate(DRUG_COMPLEX = "TZP") %>% dplyr::rename("MIC" = "TZP_MIC", "R" = "TZP_R"),
+#     df_tmp %>% select(-TZP_MIC, -TZP_R, -CZA_MIC, -CZA_R ) %>% dplyr::mutate(DRUG_COMPLEX = "CTX") %>% dplyr::rename("MIC" = "CTX_MIC", "R" = "CTX_R"),
+#     df_tmp %>% select(-TZP_MIC, -TZP_R, -CTX_MIC, -CTX_R ) %>% dplyr::mutate(DRUG_COMPLEX = "CZA") %>% dplyr::rename("MIC" = "CZA_MIC", "R" = "CZA_R")
+#   )
+# )
+
+
+plt_resist <- bind_rows(
+  list(
+    df_tmp %>% select(-CTX_MIC, -CTX_R, -CZA_MIC, -CZA_R ) %>% dplyr::mutate(DRUG_COMPLEX = "TZP") %>% dplyr::rename("MIC" = "TZP_MIC", "R" = "TZP_R"),
+    df_tmp %>% select(-TZP_MIC, -TZP_R, -CZA_MIC, -CZA_R ) %>% dplyr::mutate(DRUG_COMPLEX = "CTX") %>% dplyr::rename("MIC" = "CTX_MIC", "R" = "CTX_R"),
+    df_tmp %>% select(-TZP_MIC, -TZP_R, -CTX_MIC, -CTX_R ) %>% dplyr::mutate(DRUG_COMPLEX = "CZA") %>% dplyr::rename("MIC" = "CZA_MIC", "R" = "CZA_R")
+  )
+) %>% 
+  ggplot(aes(x=gene_ref_id_.subject., y=MIC, shape=R, color=DRUG_COMPLEX, label=Classe)) +
+  geom_point(size = 2)+
+  # facet_wrap(~Classe, ncol = 2) +
+  scale_color_manual(values = nv_drug_complex_color_tmp) +
+  scale_shape_manual(values = nv_resistance_shape) +
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x, n=4),
+                labels = scales::trans_format("log10", scales::math_format(10^.x))
+  ) +
+  theme_bla +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# plotly::ggplotly(plt_resist)
+plt_resist
+
+  # ggplot(aes(x=gene_ref_id_.subject.)) +
+  # geom_point(aes(y=TZP_MIC, shape=TZP_R), color="red" ) +
+  # geom_point(aes(y=CTX_MIC, shape=CTX_R), color="blue") +
+  # geom_point(aes(y=CZA_MIC, shape=CZA_R), color="green") +
+  # facet_wrap(~Classe, ncol = 2) +
+  # scale_y_log10() +
+  # theme_bla
+  
+```
+
+
+
+#### Resistant only
+
+```{r, fig.height=6, fig.width=18}
+# nv_DRUG_COMPLEX_color
+df_tmp <- BLA_IMPACT_betalactamases_SELECTED %>%
+  # dplyr::select(gene_ref_id_.subject., contains("_MIC"), contains("_R")) %>% #pull(CZA_MIC) %>% unique()
+  dplyr::mutate( TZP_MIC = as.numeric(TZP_MIC) ) %>% 
+  dplyr::mutate( CTX_MIC = as.numeric(str_replace_all(CTX_MIC, ">256", "256")) ) %>% 
+  dplyr::mutate( CZA_MIC = as.numeric(CZA_MIC) ) 
+
+plt_resist <- bind_rows(
+  list(
+    df_tmp %>% select(-CTX_MIC, -CTX_R, -CZA_MIC, -CZA_R ) %>% dplyr::mutate(DRUG_COMPLEX = "TZP") %>% dplyr::rename("MIC" = "TZP_MIC", "R" = "TZP_R"),
+    df_tmp %>% select(-TZP_MIC, -TZP_R, -CZA_MIC, -CZA_R ) %>% dplyr::mutate(DRUG_COMPLEX = "CTX") %>% dplyr::rename("MIC" = "CTX_MIC", "R" = "CTX_R"),
+    df_tmp %>% select(-TZP_MIC, -TZP_R, -CTX_MIC, -CTX_R ) %>% dplyr::mutate(DRUG_COMPLEX = "CZA") %>% dplyr::rename("MIC" = "CZA_MIC", "R" = "CZA_R")
+  )
+) %>% 
+  dplyr::filter(R == "Yes") %>% 
+  ggplot(aes(x=gene_ref_id_.subject., y=MIC, shape=R, color=DRUG_COMPLEX, label=Classe)) +
+  geom_point(size = 2)+
+  # facet_wrap(~Classe, ncol = 2) +
+  scale_color_manual(values = nv_drug_complex_color_tmp) +
+  scale_shape_manual(values = nv_resistance_shape) +
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x, n=4),
+                labels = scales::trans_format("log10", scales::math_format(10^.x))
+  ) +
+  theme_bla +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+# plotly::ggplotly(plt_resist)
+plt_resist
+  # ggplot(aes(x=gene_ref_id_.subject.)) +
+  # geom_point(aes(y=TZP_MIC, shape=TZP_R), color="red" ) +
+  # geom_point(aes(y=CTX_MIC, shape=CTX_R), color="blue") +
+  # geom_point(aes(y=CZA_MIC, shape=CZA_R), color="green") +
+  # facet_wrap(~Classe, ncol = 2) +
+  # scale_y_log10() +
+  # theme_bla
+  
+```
+
+## Resistant genes in samples
+
+```{r}
+# BLA_IMPACT_betalactamases_AB_resistance %>% 
+#   head()
+  # pull(DRUG_COMPLEX) %>% unique()
+```
+
+
+```{r}
+DF_RESGENE_full_table_final <- read.csv("DF_RESGENE_full_table_final.CSV")
+DF_RESGENE_full_table_final %>% 
+  # dplyr::filter(!is.na(pident)) %>% 
+  # pull(pident) %>% unique()
+  # pull(gene_len) %>% unique()
+  # dplyr::filter(is.na(pident))
+  DT::datatable(filter = "top")
+```
+
+
+
+
+```{r}
+# DF_RESGENE_full_table_final %>% 
+#   dplyr::filter(
+#     bin_name != "",
+#     gene_ref_id_.subject. != ""
+#   ) %>% 
+#   dplyr::group_by(sampleID, bin_name, gene_ref_pcm_predict, gene_ref_id_.subject.) %>% 
+#   summarise(
+#     nn = n()
+#   ) %>% 
+#   # dplyr::filter(nn>1) %>% 
+#   ungroup()
+  
+```
+
+
+
+
+
+```{r}
+DF_RESGENE_full_table_final_w_DRUG_RESIST <- dplyr::left_join(
+  DF_RESGENE_full_table_final %>%
+      dplyr::filter(!is.na(pident)),
+  BLA_IMPACT_betalactamases_SELECTED
+) %>%
+  left_join(
+    DF_SAMPLE_SUBJS_DAY %>%
+      dplyr::select(sampleID, SUBJID, DAY, ACTARMCD),
+    by = c("sampleID")
+  )
+
+# DF_RESGENE_full_table_final_w_DRUG_RESIST %>%
+#   dplyr::select(sampleID, bin_name, gene_ref_pcm_predict, gene_ref_id_.subject., gene_id_.query., TZP_R, CTX_R, CZA_R)
+
+```
+
+
+<!-- Control only -->
+<!-- ```{r} -->
+<!-- DF_RESGENE_full_table_final_w_DRUG_RESIST %>%  -->
+<!--   dplyr::filter(TZP_R == "Yes" | CTX_R == "Yes" | CZA_R == "Yes") %>%  -->
+<!--   group_by(ACTARMCD, SUBJID, DAY, sampleID) %>%  -->
+<!--   summarise( -->
+<!--     num_TZP_R = sum(TZP_R == "Yes"), -->
+<!--     num_CTX_R = sum(CTX_R == "Yes"), -->
+<!--     num_CZA_R = sum(CZA_R == "Yes") -->
+<!--   ) %>%  -->
+<!--   ungroup() %>%  -->
+<!--   dplyr::filter(ACTARMCD == "Ct") %>%  -->
+<!--   dplyr::mutate(SUBJID = factor(SUBJID)) %>%  -->
+<!--   ggplot(aes(x=DAY, y=num_TZP_R, group=SUBJID, color=SUBJID)) + -->
+<!--   geom_point() + -->
+<!--   geom_line() + -->
+<!--   theme_bla -->
+<!-- ``` -->
+
+
+
+<!-- CZA only -->
+<!-- ```{r} -->
+<!-- DF_RESGENE_full_table_final_w_DRUG_RESIST %>%  -->
+<!--   dplyr::filter(TZP_R == "Yes" | CTX_R == "Yes" | CZA_R == "Yes") %>%  -->
+<!--   group_by(ACTARMCD, SUBJID, DAY, sampleID) %>%  -->
+<!--   summarise( -->
+<!--     num_TZP_R = sum(TZP_R == "Yes"), -->
+<!--     num_CTX_R = sum(CTX_R == "Yes"), -->
+<!--     num_CZA_R = sum(CZA_R == "Yes") -->
+<!--   ) %>%  -->
+<!--   ungroup() %>%  -->
+<!--   dplyr::filter(ACTARMCD == "CZA") %>%  -->
+<!--   dplyr::mutate(SUBJID = factor(SUBJID)) %>%  -->
+<!--   ggplot(aes(x=DAY, y=num_CZA_R, group=SUBJID, color=SUBJID)) + -->
+<!--   geom_point() + -->
+<!--   geom_line() + -->
+<!--   theme_bla -->
+<!-- ``` -->
+
+
+
+<!-- CTX only -->
+<!-- ```{r} -->
+<!-- DF_RESGENE_full_table_final_w_DRUG_RESIST %>%  -->
+<!--   dplyr::filter(TZP_R == "Yes" | CTX_R == "Yes" | CZA_R == "Yes") %>%  -->
+<!--   group_by(ACTARMCD, SUBJID, DAY, sampleID) %>%  -->
+<!--   summarise( -->
+<!--     num_TZP_R = sum(TZP_R == "Yes"), -->
+<!--     num_CTX_R = sum(CTX_R == "Yes"), -->
+<!--     num_CZA_R = sum(CZA_R == "Yes") -->
+<!--   ) %>%  -->
+<!--   ungroup() %>%  -->
+<!--   dplyr::filter(ACTARMCD == "CTX") %>%  -->
+<!--   dplyr::mutate(SUBJID = factor(SUBJID)) %>%  -->
+<!--   ggplot(aes(x=DAY, y=num_CTX_R, group=SUBJID, color=SUBJID)) + -->
+<!--   geom_point() + -->
+<!--   geom_line() + -->
+<!--   theme_bla -->
+<!-- ``` -->
+
+
+
+```{r}
+# DF_TAXA_ABUNDANCE_w_ID %>% colnames()
+```
+
+
+
+
+```{r}
+# DF_RESGENE_full_table_final_w_DRUG_RESIST %>% head()
+
+```
+
+
+```{r}
+# DF_RESGENE_full_table_final_w_DRUG_RESIST %>% 
+#   dplyr::select(
+#     ACTARMCD, SUBJID, DAY, sampleID, bin_name, gene_ref_id_.subject., gene_id_.query., contains("_R"), Classe, gene_ref_pcm_predict, pident, gene_len, blast_bitscore, blast_evalue
+#   )
+```
+
+
+```{r}
+DF_TAXA_ABUNDANCE_w_ID_w_RESIST <- DF_TAXA_ABUNDANCE_w_ID %>% 
+  left_join(
+    DF_RESGENE_full_table_final_w_DRUG_RESIST,
+    by = c("sampleID", "bin_name", "SUBJID", "DAY", "ACTARMCD")
+  )
+
+# DF_TAXA_ABUNDANCE_w_ID_w_RESIST %>% 
+#   dplyr::filter(!is.na(TZP_R)) %>% View()
+```
+
+
+DF_RESGENE_full_table_final_w_DRUG_RESIST
+
+```{r}
+DF_RESGENE_full_table_final_w_DRUG_RESIST %>% 
+  DT::datatable(filter="top")
+```
+
+
+DF_TAXA_ABUNDANCE_w_ID
+
+DF_RESGENE_full_table_final_w_DRUG_RESIST
+
+gene_id_.query.
+
+
+DF_RESGENE_full_table_final_w_DRUG_RESIST %>% 
+  # colnames()
+  group_by(ACTARMCD, SUBJID, DAY, sampleID, bin_name) %>% 
+  summarise(nn=n())
+
+```{r}
+DF_RESGENE_full_table_final_w_DRUG_RESIST %>% 
+  # colnames()
+  group_by(ACTARMCD, SUBJID, DAY, sampleID, bin_name) %>% 
+  summarise(nn=n()) %>% 
+  DT::datatable(filter = "top")
+```
+
+
+```{r}
+DF_RESGENE_full_table_final_w_DRUG_RESIST %>% 
+  # group_by(sampleID, bin_name, gene_ref_pcm_predict, gene_ref_id_.subject.) %>% 
+  group_by(sampleID, bin_name, gene_ref_pcm_predict) %>% 
+  summarise(
+    # TZP_R = sum()
+    nn = n(),
+    TZP_R_f_Yes = sum(TZP_R == "Yes")/length(TZP_R),
+    CTX_R_f_Yes = sum(CTX_R == "Yes")/length(CTX_R),
+    CZA_R_f_Yes = sum(CZA_R == "Yes")/length(CZA_R)
+  ) %>% 
+  ungroup() %>% 
+  DT::datatable(filter = "top")
+  # dplyr::filter(nn>1) %>% 
+  # dplyr::group_by(sampleID, bin_name)
+  
+  # ggplot() +
+  # geom_histogram(aes(x=nn)) +
+  # theme_bla
+  # TZP_R
+  # CTX_R
+  # CZA_R
+```
+
+
+
+```{r}
+DF_RESGENE_full_table_final_w_DRUG_RESIST %>% 
+  dplyr::filter(
+    SUBJID == "10003",
+    DAY == 37,
+    bin_name == "D0003R008_Bin_output.36"
+  )
+```
+
+
+
+```{r}
+# DF_TAXA_ABUNDANCE_w_ID_w_RESIST$TZP_R == "Yes"
+
+DF_N_RESIST_SUBJID <- DF_TAXA_ABUNDANCE_w_ID_w_RESIST %>% 
+  # colnames()
+  # group_by( "DRUG_COMPLEX", "DAV", "ACTARMCD", "DAY", "SUBJID", "sampleID") %>% 
+  group_by( DRUG_COMPLEX, DAV, ACTARMCD, DAY, SUBJID, sampleID) %>% 
+  summarise(
+    n_TZP_R = sum(TZP_R == "Yes", na.rm = TRUE),
+    n_CTX_R = sum(CTX_R == "Yes", na.rm = TRUE),
+    n_CZA_R = sum(CZA_R == "Yes", na.rm = TRUE)
+  )
+DF_N_RESIST_SUBJID %>% 
+  DT::datatable(filter = "top")
+```
+
+
+```{r}
+# dplyr::filter(bin_completeness >= bin_completeness_thresh) %>%
+  # dplyr::filter(bin_contamination <= bin_contamination_thresh) %>%
+
+v_bin_completeness_thresh  <- c(0, 5, 10, 25, 50, 70, 80, 90)
+v_bin_contamination_thresh <- c(0, 5, 10, 15, 50, 100)
+
+f_apply_tmp <- function(DF_TAXA_ABUNDANCE_w_ID, bin_completeness_thresh_ii, v_bin_contamination_thresh){
+  
+  df_tmp <- lapply(
+    seq(1, length(v_bin_contamination_thresh)),
+    function (jj) DF_TAXA_ABUNDANCE_w_ID_w_RESIST %>% 
+      dplyr::filter(bin_completeness >= bin_completeness_thresh_ii ) %>%
+      dplyr::filter(bin_contamination <= v_bin_contamination_thresh[jj] ) %>%
+      group_by( DRUG_COMPLEX, DAV, ACTARMCD, DAY, SUBJID, sampleID) %>% 
+      summarise(
+        n_TZP_R = sum(TZP_R == "Yes", na.rm = TRUE),
+        n_CTX_R = sum(CTX_R == "Yes", na.rm = TRUE),
+        n_CZA_R = sum(CZA_R == "Yes", na.rm = TRUE)
+      ) %>% 
+      ungroup() %>% 
+      dplyr::mutate(
+        bin_completeness_thresh  = bin_completeness_thresh_ii,
+        bin_contamination_thresh = v_bin_contamination_thresh[jj]
+      )
+  ) %>% 
+    bind_rows()
+  return(df_tmp)
+}
+
+
+DF_N_RESIST_SUBJID_w_THRESHOLD <- lapply(
+  seq(1, length(v_bin_completeness_thresh)),
+  function (ii) f_apply_tmp(DF_TAXA_ABUNDANCE_w_ID, v_bin_completeness_thresh[ii], v_bin_contamination_thresh)
+) %>% 
+  bind_rows()
+
+```
+
+```{r}
+# DF_N_RESIST_SUBJID_w_THRESHOLD %>% 
+#   dplyr::filter(bin_completeness_thresh == 90, bin_contamination_thresh == 15)
+  # pull(bin_completeness_thresh) %>% unique()
+  # pull(bin_contamination_thresh) %>% unique()
+  # colnames()
+
+```
+
+
+```{r}
+# bin_completeness_thresh_FINAL <- 90
+# bin_contamination_thresh_FINAL <- 15
+# str_SUBJID_TMP <- "10051"
+# DF_TAXA_ABUNDANCE_w_ID_w_RESIST %>% 
+#   dplyr::filter(bin_completeness >= bin_completeness_thresh_FINAL ) %>%
+#   dplyr::filter(bin_contamination <= bin_contamination_thresh_FINAL ) %>% 
+#   dplyr::filter(SUBJID == str_SUBJID_TMP) %>% 
+#   # dplyr::filter(DAY == 6)
+#   dplyr::filter(id_tax_species == 104)
+```
+
+
+
+
+### TZP Compleness and Contamination {.tabset}
+
+
+```{r}
+get_plt_N_RESIST_TZP_R_thresholds <- function(str_DRUG_COMPLEX_tmp, str_DAV_tmp){
+  lbl_x <- "Bin completeness threshold (%)"
+  lbl_y <- "Number of TZP Resistant genes per subject"
+  nv_DRUG_COMPLEX_labels <- setNames(str_replace_all(v_DRUG_COMPLEX_labels, "\n", "/"), v_DRUG_COMPLEX_levels)
+  nv_DAV_labels <- setNames(v_DAV_labels, v_DAV_levels)
+  lbl_title <- sprintf("%s %s", nv_DRUG_COMPLEX_labels[str_DRUG_COMPLEX_tmp], nv_DAV_labels[str_DAV_tmp] )
+
+  plt_tmp <- DF_N_RESIST_SUBJID_w_THRESHOLD %>% 
+    dplyr::filter(DRUG_COMPLEX == str_DRUG_COMPLEX_tmp) %>% 
+    dplyr::filter(DAV == str_DAV_tmp) %>% 
+    dplyr::mutate(bin_contamination_thresh=factor(bin_contamination_thresh)) %>% 
+    # pull(bin_completeness_thresh) %>% unique()
+    ggplot( aes(x=bin_completeness_thresh, y=n_TZP_R, fill=bin_contamination_thresh, color=bin_contamination_thresh, group=interaction(bin_completeness_thresh, bin_contamination_thresh)) ) +
+    geom_boxplot() +
+    # geom_jitter(width = 0.5, alpha=0.25) +
+    facet_grid(DAY~.) + # , labeller = as_labeller(nv_labels_grid_tmp)
+    labs(x=lbl_x, y=lbl_y, title = lbl_title) +
+    coord_cartesian(
+      ylim = c(0, 6.2)
+    ) +
+    scale_x_continuous(breaks = unique(DF_N_RESIST_SUBJID_w_THRESHOLD$bin_completeness_thresh)) +
+    theme_bla +
+    theme(legend.position = "bottom") +
+    theme(strip.background = element_blank()) +
+    theme(strip.text = element_text(colour = 'black', size = 15)) +
+    theme(panel.border = element_rect(colour = "black", fill = NA) )
+  return(plt_tmp)
+}
+
+
+```
+
+
+
+```{r, results='asis', fig.height=8, fig.width=12}
+str_DRUG_COMPLEX_tmp <- "Ct"
+str_DAV_tmp <- "NODAV"
+cat("#### ", str_DRUG_COMPLEX_tmp, " ", str_DAV_tmp)
+cat("\n")
+cat("\n")
+plt_tmp <- get_plt_N_RESIST_TZP_R_thresholds(str_DRUG_COMPLEX_tmp, str_DAV_tmp)
+print(plt_tmp)
+cat("\n")
+cat("\n")
+```
+
+
+
+```{r, results='asis', fig.height=8, fig.width=12}
+
+str_DRUG_COMPLEX_tmp <- "PTZ"
+str_DAV_tmp <- "NODAV"
+for(str_DAV_tmp in v_DAV_levels){
+  cat("#### ", str_DRUG_COMPLEX_tmp, " ", str_DAV_tmp)
+  cat("\n")
+  cat("\n")
+  plt_tmp <- get_plt_N_RESIST_TZP_R_thresholds(str_DRUG_COMPLEX_tmp, str_DAV_tmp)
+  print(plt_tmp)
+  cat("\n")
+  cat("\n")
+}
+
+```
+
+
+
+### {-}
+
+## {-}
+
+
+
+
+
+### CZA Compleness and Contamination {.tabset}
+
+
+```{r}
+get_plt_N_RESIST_CZA_R_thresholds <- function(str_DRUG_COMPLEX_tmp, str_DAV_tmp){
+  lbl_x <- "Bin completeness threshold (%)"
+  lbl_y <- "Number of CZA Resistant genes per subject"
+  nv_DRUG_COMPLEX_labels <- setNames(str_replace_all(v_DRUG_COMPLEX_labels, "\n", "/"), v_DRUG_COMPLEX_levels)
+  nv_DAV_labels <- setNames(v_DAV_labels, v_DAV_levels)
+  lbl_title <- sprintf("%s %s", nv_DRUG_COMPLEX_labels[str_DRUG_COMPLEX_tmp], nv_DAV_labels[str_DAV_tmp] )
+
+  plt_tmp <- DF_N_RESIST_SUBJID_w_THRESHOLD %>% 
+    dplyr::filter(DRUG_COMPLEX == str_DRUG_COMPLEX_tmp) %>% 
+    dplyr::filter(DAV == str_DAV_tmp) %>% 
+    dplyr::mutate(bin_contamination_thresh=factor(bin_contamination_thresh)) %>% 
+    # pull(bin_completeness_thresh) %>% unique()
+    ggplot( aes(x=bin_completeness_thresh, y=n_CZA_R, fill=bin_contamination_thresh, color=bin_contamination_thresh, group=interaction(bin_completeness_thresh, bin_contamination_thresh)) ) +
+    geom_boxplot() +
+    # geom_jitter(width = 0.5, alpha=0.25) +
+    facet_grid(DAY~.) + # , labeller = as_labeller(nv_labels_grid_tmp)
+    labs(x=lbl_x, y=lbl_y, title = lbl_title) +
+    coord_cartesian(
+      ylim = c(0, 6.2)
+    ) +
+    scale_x_continuous(breaks = unique(DF_N_RESIST_SUBJID_w_THRESHOLD$bin_completeness_thresh)) +
+    theme_bla +
+    theme(legend.position = "bottom") +
+    theme(strip.background = element_blank()) +
+    theme(strip.text = element_text(colour = 'black', size = 15)) +
+    theme(panel.border = element_rect(colour = "black", fill = NA) )
+  return(plt_tmp)
+}
+
+
+```
+
+
+
+```{r, results='asis', fig.height=8, fig.width=12}
+str_DRUG_COMPLEX_tmp <- "Ct"
+str_DAV_tmp <- "NODAV"
+cat("#### ", str_DRUG_COMPLEX_tmp, " ", str_DAV_tmp)
+cat("\n")
+cat("\n")
+plt_tmp <- get_plt_N_RESIST_CZA_R_thresholds(str_DRUG_COMPLEX_tmp, str_DAV_tmp)
+print(plt_tmp)
+cat("\n")
+cat("\n")
+```
+
+
+
+```{r, results='asis', fig.height=8, fig.width=12}
+
+str_DRUG_COMPLEX_tmp <- "CZA"
+str_DAV_tmp <- "NODAV"
+for(str_DAV_tmp in v_DAV_levels){
+  cat("#### ", str_DRUG_COMPLEX_tmp, " ", str_DAV_tmp)
+  cat("\n")
+  cat("\n")
+  plt_tmp <- get_plt_N_RESIST_CZA_R_thresholds(str_DRUG_COMPLEX_tmp, str_DAV_tmp)
+  print(plt_tmp)
+  cat("\n")
+  cat("\n")
+}
+
+```
+
+
+
+### {-}
+
+## {-}
+
+
+
+
+
+
+### CTX Compleness and Contamination {.tabset}
+
+
+```{r}
+get_plt_N_RESIST_CTX_R_thresholds <- function(str_DRUG_COMPLEX_tmp, str_DAV_tmp){
+  lbl_x <- "Bin completeness threshold (%)"
+  lbl_y <- "Number of CTX Resistant genes per subject"
+  nv_DRUG_COMPLEX_labels <- setNames(str_replace_all(v_DRUG_COMPLEX_labels, "\n", "/"), v_DRUG_COMPLEX_levels)
+  nv_DAV_labels <- setNames(v_DAV_labels, v_DAV_levels)
+  lbl_title <- sprintf("%s %s", nv_DRUG_COMPLEX_labels[str_DRUG_COMPLEX_tmp], nv_DAV_labels[str_DAV_tmp] )
+
+  plt_tmp <- DF_N_RESIST_SUBJID_w_THRESHOLD %>% 
+    dplyr::filter(DRUG_COMPLEX == str_DRUG_COMPLEX_tmp) %>% 
+    dplyr::filter(DAV == str_DAV_tmp) %>% 
+    dplyr::mutate(bin_contamination_thresh=factor(bin_contamination_thresh)) %>% 
+    # pull(bin_completeness_thresh) %>% unique()
+    ggplot( aes(x=bin_completeness_thresh, y=n_CTX_R, fill=bin_contamination_thresh, color=bin_contamination_thresh, group=interaction(bin_completeness_thresh, bin_contamination_thresh)) ) +
+    geom_boxplot() +
+    # geom_jitter(width = 0.5, alpha=0.25) +
+    facet_grid(DAY~.) + # , labeller = as_labeller(nv_labels_grid_tmp)
+    labs(x=lbl_x, y=lbl_y, title = lbl_title) +
+    coord_cartesian(
+      ylim = c(0, 6.2)
+    ) +
+    scale_x_continuous(breaks = unique(DF_N_RESIST_SUBJID_w_THRESHOLD$bin_completeness_thresh)) +
+    theme_bla +
+    theme(legend.position = "bottom") +
+    theme(strip.background = element_blank()) +
+    theme(strip.text = element_text(colour = 'black', size = 15)) +
+    theme(panel.border = element_rect(colour = "black", fill = NA) )
+  return(plt_tmp)
+}
+
+
+```
+
+
+
+```{r, results='asis', fig.height=8, fig.width=12}
+str_DRUG_COMPLEX_tmp <- "Ct"
+str_DAV_tmp <- "NODAV"
+cat("#### ", str_DRUG_COMPLEX_tmp, " ", str_DAV_tmp)
+cat("\n")
+cat("\n")
+plt_tmp <- get_plt_N_RESIST_CTX_R_thresholds(str_DRUG_COMPLEX_tmp, str_DAV_tmp)
+print(plt_tmp)
+cat("\n")
+cat("\n")
+```
+
+
+
+
+```{r, results='asis', fig.height=8, fig.width=12}
+
+str_DRUG_COMPLEX_tmp <- "CRO"
+str_DAV_tmp <- "NODAV"
+for(str_DAV_tmp in v_DAV_levels){
+  cat("#### ", str_DRUG_COMPLEX_tmp, " ", str_DAV_tmp)
+  cat("\n")
+  cat("\n")
+  plt_tmp <- get_plt_N_RESIST_CTX_R_thresholds(str_DRUG_COMPLEX_tmp, str_DAV_tmp)
+  print(plt_tmp)
+  cat("\n")
+  cat("\n")
+}
+
+```
+
+
+
+## Concentrations
+
+```{r}
+adpcf <- readRDS("data_original/adpcf.RDS")
+adpcf %>% colnames()
+```
+```{r}
+DF_Cf <- adpcf %>% 
+  dplyr::mutate(SUBJID=as.integer(SUBJID)) %>% 
+  # pull(AVISIT) %>% unique()
+  dplyr::mutate(DAY = as.integer(str_replace_all(AVISIT, "DAY ", "")) ) %>% 
+  dplyr::select(PARAMCD, SUBJID, DAY, DTYPE, ARELTM, AVAL, AVALL)
+DF_Cf %>% DT::datatable(filter = "top")
+
+```
+
+
+## BL activity
+
+```{r}
+DF_BL_act <- readRDS("BL_act.RDS") %>% 
+  dplyr::mutate(DAY = as.integer(str_replace_all(AVISIT, "DAY ", "")) ) %>% 
+  dplyr::mutate(SUBJID=as.integer(SUBJID))
+DF_BL_act %>% DT::datatable(filter = "top")
+```
+
+
+
+```{r, fig.height=8, fig.width=12}
+DF_N_RESIST_BL_activity_w_THRESHOLD <- DF_N_RESIST_SUBJID_w_THRESHOLD %>% 
+  left_join(
+    DF_BL_act %>% 
+      dplyr::rename("BL_activity_nmol_over_ming" = "BL activity (nmol/(min·g))") %>% 
+      dplyr::mutate(CENS = case_when(
+          str_detect(BL_activity_nmol_over_ming, "≤3.4") ~ 1,
+          .default = 0
+        )
+      ) %>% 
+      dplyr::mutate(BL_activity = case_when(
+          str_detect(BL_activity_nmol_over_ming, "≤3.4") ~ 3.4,
+          .default = as.numeric(BL_activity_nmol_over_ming)
+        )
+      ) %>% 
+      dplyr::select(-AVISIT),
+    by = c("SUBJID", "ACTARMCD", "DAY")
+  )
+```
+
+
+
+
+
+
+
+```{r, fig.height=8, fig.width=12}
+
+bin_completeness_thresh_tmp <- 90
+bin_contamination_thresh_tmp <- 15
+
+str_DRUG_COMPLEX_tmp <- "PTZ"
+v_DAY_tmp <- c(1, 6)
+lbl_x <- "Number of TZP Resistant genes"
+lbl_y <- "BL activity (nmol/(min·g))"
+lbl_subtitle <- sprintf("Completeness = %g %%, Contamination = %g %%", bin_completeness_thresh_tmp, bin_contamination_thresh_tmp)
+
+DF_N_RESIST_BL_activity_w_THRESHOLD %>% 
+  dplyr::filter(bin_completeness_thresh == bin_completeness_thresh_tmp, bin_contamination_thresh == bin_contamination_thresh_tmp) %>% 
+  dplyr::filter(DAY %in% v_DAY_tmp ) %>% 
+  dplyr::filter(DRUG_COMPLEX == str_DRUG_COMPLEX_tmp) %>% 
+  # ggplot(aes(y=BL_activity, group=SUBJID)) +
+  # geom_point(aes(x=n_TZP_R)) +
+  ggplot(aes(y=BL_activity)) +
+  geom_boxplot(aes(x=factor(n_TZP_R) ), outlier.shape = NA ) +
+  geom_point  (aes(x=factor(n_TZP_R) ), alpha=0.25) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  facet_grid(DAV~DAY) +
+  scale_y_log10() +
+  theme_bla
+
+
+```
+
+
+```{r, fig.height=8, fig.width=12}
+
+bin_completeness_thresh_tmp <- 90
+bin_contamination_thresh_tmp <- 15
+
+str_DRUG_COMPLEX_tmp <- "CZA"
+v_DAY_tmp <- c(1, 6)
+lbl_x <- "Number of CZA Resistant genes"
+lbl_y <- "BL activity (nmol/(min·g))"
+lbl_subtitle <- sprintf("Completeness = %g %%, Contamination = %g %%", bin_completeness_thresh_tmp, bin_contamination_thresh_tmp)
+
+DF_N_RESIST_BL_activity_w_THRESHOLD %>% 
+  dplyr::filter(bin_completeness_thresh == bin_completeness_thresh_tmp, bin_contamination_thresh == bin_contamination_thresh_tmp) %>% 
+  dplyr::filter(DAY %in% v_DAY_tmp ) %>% 
+  dplyr::filter(DRUG_COMPLEX == str_DRUG_COMPLEX_tmp) %>% 
+  # ggplot(aes(y=BL_activity, group=SUBJID)) +
+  # geom_point(aes(x=n_TZP_R)) +
+  ggplot(aes(y=BL_activity)) +
+  geom_boxplot(aes(x=factor(n_CZA_R) ), outlier.shape = NA ) +
+  geom_point  (aes(x=factor(n_CZA_R) ), alpha=0.25) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  facet_grid(DAV~DAY) +
+  scale_y_log10() +
+  theme_bla
+
+
+```
+
+
+
+
+
+```{r, fig.height=8, fig.width=12}
+
+bin_completeness_thresh_tmp <- 90
+bin_contamination_thresh_tmp <- 15
+
+str_DRUG_COMPLEX_tmp <- "CRO"
+v_DAY_tmp <- c(1, 6)
+lbl_x <- "Number of CTX Resistant genes"
+lbl_y <- "BL activity (nmol/(min·g))"
+lbl_subtitle <- sprintf("Completeness = %g %%, Contamination = %g %%", bin_completeness_thresh_tmp, bin_contamination_thresh_tmp)
+
+DF_N_RESIST_BL_activity_w_THRESHOLD %>% 
+  dplyr::filter(bin_completeness_thresh == bin_completeness_thresh_tmp, bin_contamination_thresh == bin_contamination_thresh_tmp) %>% 
+  dplyr::filter(DAY %in% v_DAY_tmp ) %>% 
+  dplyr::filter(DRUG_COMPLEX == str_DRUG_COMPLEX_tmp) %>% 
+  # ggplot(aes(y=BL_activity, group=SUBJID)) +
+  # geom_point(aes(x=n_TZP_R)) +
+  ggplot(aes(y=BL_activity)) +
+  geom_boxplot(aes(x=factor(n_CTX_R) ), outlier.shape = NA ) +
+  geom_point  (aes(x=factor(n_CTX_R) ), alpha=0.25) +
+  labs(x=lbl_x, y=lbl_y, subtitle = lbl_subtitle) +
+  facet_grid(DAV~DAY) +
+  scale_y_log10() +
+  theme_bla
+
+
+```
+
+
+
+
+
+
+# Selected Threshold
+
+
+
+```{r}
+bin_completeness_thresh_FINAL <- 90
+bin_contamination_thresh_FINAL <- 15
+```
+
+
+```{r}
+DF_TAXA_ABUNDANCE_w_ID_w_RESIST %>% 
+  DT::datatable(filter="top")
+```
+
+## Richness
+
+```{r}
+DF_RICHNESS_SHTGN_w_FINAL_THRESHOLD <- DF_RICHNESS_SHTGN_w_THRESHOLD %>% 
+  dplyr::filter(
+    bin_completeness_thresh  == bin_completeness_thresh_FINAL,
+    bin_contamination_thresh == bin_contamination_thresh_FINAL
+  )
+
+```
+
+
+
+```{r}
+
+v_DAY_levels <- c(1, 6, 37)
+
+get_Richeness_wilcox_pvalue <- function(int_DAY_1, int_DAY_2, df_4_mnlx_tmp_TMP){
+  b_DAY_1 <- df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_1) %>% nrow() > 0
+  b_DAY_2 <- df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_2) %>% nrow() > 0
+  if ( b_DAY_1 & b_DAY_2 ){
+    p.value <- wilcox.test(
+      df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_1) %>% pull(Richness),
+      df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_2) %>% pull(Richness),
+      correct = FALSE
+    )$p.value
+  }else{
+    p.value <- NA
+  }
+  return(p.value)
+}
+
+int_DAY_TMP_1 <- 1
+int_DAY_TMP_2 <- 6
+
+DF_RICHNESS_p.value_A <- DF_RICHNESS_SHTGN_w_FINAL_THRESHOLD %>% 
+  group_by(DRUG_COMPLEX, DAV) %>% 
+  do(pvalue = get_Richeness_wilcox_pvalue(int_DAY_TMP_1, int_DAY_TMP_2, .) ) %>% 
+  unnest() %>% 
+  dplyr::mutate(DAY_1 = int_DAY_TMP_1, DAY_2 = int_DAY_TMP_2)
+
+
+int_DAY_TMP_1 <- 1
+int_DAY_TMP_2 <- 37
+
+DF_RICHNESS_p.value_B <- DF_RICHNESS_SHTGN_w_FINAL_THRESHOLD %>% 
+  group_by(DRUG_COMPLEX, DAV) %>% 
+  do(pvalue = get_Richeness_wilcox_pvalue(int_DAY_TMP_1, int_DAY_TMP_2, .) ) %>% 
+  unnest() %>% 
+  dplyr::mutate(DAY_1 = int_DAY_TMP_1, DAY_2 = int_DAY_TMP_2)
+
+
+int_DAY_TMP_1 <- 6
+int_DAY_TMP_2 <- 37
+
+DF_RICHNESS_p.value_C <- DF_RICHNESS_SHTGN_w_FINAL_THRESHOLD %>% 
+  group_by(DRUG_COMPLEX, DAV) %>% 
+  do(pvalue = get_Richeness_wilcox_pvalue(int_DAY_TMP_1, int_DAY_TMP_2, .) ) %>% 
+  unnest() %>% 
+  dplyr::mutate(DAY_1 = int_DAY_TMP_1, DAY_2 = int_DAY_TMP_2)
+
+
+DF_RICHNESS_p.value <- bind_rows(
+  list(
+    DF_RICHNESS_p.value_A,
+    DF_RICHNESS_p.value_B,
+    DF_RICHNESS_p.value_C
+  )
+) %>% dplyr::mutate(
+    DAY_1 = factor(DAY_1, levels=v_DAY_levels),
+    DAY_2 = factor(DAY_2, levels=v_DAY_levels)
+  )
+
+```
+
+
+```{r, fig.height=8, fig.width=12}
+lbl_x <- "Day"
+lbl_y <- "Richness"
+DF_RICHNESS_SHTGN_w_FINAL_THRESHOLD %>% 
+  
+  ggplot() +
+  geom_boxplot(aes(x=as.factor(DAY), y=Richness, group=as.factor(DAY))) +
+  geom_segment(
+    data = DF_RICHNESS_p.value %>% dplyr::filter(pvalue < 0.05), 
+    aes(x=DAY_1, xend=DAY_2, y=30 + 1.0*(as.integer(DAY_1) + as.integer(DAY_2)) ), 
+    color = "red"
+  ) +
+  geom_label(
+    data = DF_RICHNESS_p.value %>% dplyr::filter(pvalue < 0.05)  %>% 
+  mutate(xx=(as.integer(DAY_1) + as.integer(DAY_2))/2), 
+    # aes(x=(as.factor(DAY_1)+as.factor(DAY_2) )/2, y=4.5 + 0.01*(DAY_1 + DAY_2), label="*" ), 
+    aes(x=xx, y=30 + 1.0*(as.integer(DAY_1) + as.integer(DAY_2)), label="*", fontface = "bold" ), 
+    color = "red"
+  ) +
+  facet_grid(DRUG_COMPLEX~DAV) +
+  labs(x=lbl_x, y=lbl_y) +
+  # coord_cartesian(
+  #   ylim = c(0, 6)
+  # ) +
+  theme_bla +
+  theme(strip.background = element_blank()) +
+  theme(strip.text = element_text(colour = 'black', size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+
+```
+
+
+```{r}
+DF_RICHNESS_SHTGN_w_FINAL_THRESHOLD_STATS <- DF_RICHNESS_SHTGN_w_FINAL_THRESHOLD %>% 
+  group_by(DRUG_COMPLEX, DAV, DAY) %>% 
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$Richness, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data)
+```
+
+```{r}
+DF_RICHNESS_SHTGN_w_FINAL_THRESHOLD_STATS %>% dplyr::filter(DRUG_COMPLEX == "PTZ")
+```
+
+
+
+## Shannon
+
+```{r, fig.height=8, fig.width=12}
+DF_SHANNON_bits_SHTGN_w_FINAL_THRESHOLD <- DF_SHANNON_bits_SHTGN_w_THRESHOLD %>% 
+  dplyr::filter(
+    bin_completeness_thresh  == bin_completeness_thresh_FINAL,
+    bin_contamination_thresh == bin_contamination_thresh_FINAL
+  )
+```
+
+
+
+```{r}
+
+v_DAY_levels <- c(1, 6, 37)
+
+get_wilcox_pvalue <- function(int_DAY_1, int_DAY_2, df_4_mnlx_tmp_TMP){
+  b_DAY_1 <- df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_1) %>% nrow() > 0
+  b_DAY_2 <- df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_2) %>% nrow() > 0
+  if ( b_DAY_1 & b_DAY_2 ){
+    p.value <- wilcox.test(
+      df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_1) %>% pull(H_bits),
+      df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_2) %>% pull(H_bits),
+      correct = FALSE
+    )$p.value
+  }else{
+    p.value <- NA
+  }
+  return(p.value)
+}
+
+int_DAY_TMP_1 <- 1
+int_DAY_TMP_2 <- 6
+
+DF_SHANNON_p.value_A <- DF_SHANNON_bits_SHTGN_w_FINAL_THRESHOLD %>% 
+  group_by(DRUG_COMPLEX, DAV) %>% 
+  do(pvalue = get_wilcox_pvalue(int_DAY_TMP_1, int_DAY_TMP_2, .) ) %>% 
+  unnest() %>% 
+  dplyr::mutate(DAY_1 = int_DAY_TMP_1, DAY_2 = int_DAY_TMP_2)
+
+
+int_DAY_TMP_1 <- 1
+int_DAY_TMP_2 <- 37
+
+DF_SHANNON_p.value_B <- DF_SHANNON_bits_SHTGN_w_FINAL_THRESHOLD %>% 
+  group_by(DRUG_COMPLEX, DAV) %>% 
+  do(pvalue = get_wilcox_pvalue(int_DAY_TMP_1, int_DAY_TMP_2, .) ) %>% 
+  unnest() %>% 
+  dplyr::mutate(DAY_1 = int_DAY_TMP_1, DAY_2 = int_DAY_TMP_2)
+
+
+int_DAY_TMP_1 <- 6
+int_DAY_TMP_2 <- 37
+
+DF_SHANNON_p.value_C <- DF_SHANNON_bits_SHTGN_w_FINAL_THRESHOLD %>% 
+  group_by(DRUG_COMPLEX, DAV) %>% 
+  do(pvalue = get_wilcox_pvalue(int_DAY_TMP_1, int_DAY_TMP_2, .) ) %>% 
+  unnest() %>% 
+  dplyr::mutate(DAY_1 = int_DAY_TMP_1, DAY_2 = int_DAY_TMP_2)
+
+
+DF_SHANNON_p.value <- bind_rows(
+  list(
+    DF_SHANNON_p.value_A,
+    DF_SHANNON_p.value_B,
+    DF_SHANNON_p.value_C
+  )
+) %>% dplyr::mutate(
+    DAY_1 = factor(DAY_1, levels=v_DAY_levels),
+    DAY_2 = factor(DAY_2, levels=v_DAY_levels)
+  )
+
+```
+
+
+
+```{r}
+# factor(DF_SHANNON_p.value$DAY_2)
+DF_SHANNON_p.value %>% 
+  mutate(xx=(as.integer(DAY_1) + as.integer(DAY_2))/2) %>% 
+  DT::datatable(filter = "top")
+# geom_segment()
+# DF_SHANNON_p.value %>% dplyr::filter(pvalue < 0.05)
+```
+
+
+
+```{r, fig.height=8, fig.width=12}
+lbl_x <- "Day"
+lbl_y <- "Shannon index (bits)"
+DF_SHANNON_bits_SHTGN_w_FINAL_THRESHOLD %>% 
+  
+  ggplot() +
+  geom_boxplot(aes(x=as.factor(DAY), y=H_bits, group=as.factor(DAY))) +
+  geom_segment(
+    data = DF_SHANNON_p.value %>% dplyr::filter(pvalue < 0.05), 
+    aes(x=DAY_1, xend=DAY_2, y=4.5 + 0.2*(as.integer(DAY_1) + as.integer(DAY_2)) ), 
+    color = "red"
+  ) +
+  geom_label(
+    data = DF_SHANNON_p.value %>% dplyr::filter(pvalue < 0.05)  %>% 
+  mutate(xx=(as.integer(DAY_1) + as.integer(DAY_2))/2), 
+    # aes(x=(as.factor(DAY_1)+as.factor(DAY_2) )/2, y=4.5 + 0.01*(DAY_1 + DAY_2), label="*" ), 
+    aes(x=xx, y=4.5 + 0.2*(as.integer(DAY_1) + as.integer(DAY_2)), label="*", fontface = "bold" ), 
+    color = "red"
+  ) +
+  facet_grid(DRUG_COMPLEX~DAV) +
+  labs(x=lbl_x, y=lbl_y) +
+  coord_cartesian(
+    ylim = c(0, 6)
+  ) +
+  theme_bla +
+  theme(strip.background = element_blank()) +
+  theme(strip.text = element_text(colour = 'black', size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+
+```
+
+
+```{r}
+DF_SHANNON_bits_SHTGN_w_FINAL_THRESHOLD_STATS <- DF_SHANNON_bits_SHTGN_w_FINAL_THRESHOLD %>% 
+  group_by(DRUG_COMPLEX, DAV, DAY) %>% 
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$H_bits, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data)
+```
+
+```{r}
+DF_SHANNON_bits_SHTGN_w_FINAL_THRESHOLD_STATS %>% dplyr::filter(DRUG_COMPLEX == "CZA")
+```
+```{r}
+2.929696		- 1.11
+```
+
+## Beta-lactamases presence 
+
+
+```{r}
+# DF_SAMPLE_SUBJS_DAY %>% 
+#   dplyr::select(ACTARMCD, SUBJID, DAY, sampleID)
+```
+
+
+```{r}
+DF_SAMPLE_SUBJS_DAY %>% 
+  dplyr::select(ACTARMCD, SUBJID, DAY, sampleID) %>% 
+  left_join(
+    DF_RESGENE_full_table_final %>% 
+      dplyr::filter(gene_ref_id_.subject. != ""),
+    by = c("sampleID")
+  ) %>% 
+  DT::datatable(filter = "top")
+
+
+  
+  
+  # dplyr::filter(gene_ref_pcm_predict != "")
+```
+
+
+
+
+```{r}
+
+DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL <- DF_TAXA_ABUNDANCE_w_ID %>% 
+  dplyr::filter(bin_completeness_thresh  >= bin_completeness_thresh_FINAL) %>% 
+  dplyr::filter(bin_contamination_thresh <= bin_contamination_thresh_FINAL) %>% 
+  dplyr::select(DRUG_COMPLEX, DAV, ACTARMCD, SUBJID, DAY, sampleID, bin_name, contains("id_tax_"), contains("bin_tax_"), bin_abundance, bin_RelAbun )
+
+
+write.csv(DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL, "DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL.CSV", row.names = FALSE)
+  # dplyr::group_by(SUBJID, DAY, bin_name) %>% 
+  # summarise(
+  #   nn = n()
+  # ) %>% 
+  # dplyr::filter(nn>1)
+```
+
+
+
+
+
+
+
+
+
+```{r}
+# BLA_IMPACT_betalactamases %>% 
+#   dplyr::rename("gene_ref_id_.subject." = "Symbol") %>% 
+#   dplyr::select(gene_ref_id_.subject., Classe, Phenotype, TZP_R, CZA_R, CTX_R)
+  # pull(Phenotype) %>% unique()
+# BLA_IMPACT_betalactamases_AB_resistance %>% 
+  # head()
+  # colnames()
+  # dplyr::select(gene_ref_id_.subject., Classe, DRUG_COMPLEX, R)
+```
+
+```{r}
+# DF_TAXA_ABUNDANCE_w_ID_w_RESIST
+```
+
+
+```{r}
+DF_RESGENE_summarise <- DF_RESGENE_full_table_final %>% 
+  dplyr::filter(gene_ref_pcm_predict != "") %>% 
+  dplyr::filter(bin_name != "") %>% 
+  group_by(sampleID, bin_name, gene_ref_pcm_predict, gene_ref_id_.subject.) %>% 
+  summarise(nn = n()) %>% 
+  ungroup() %>% 
+  left_join(
+    BLA_IMPACT_betalactamases %>% 
+      dplyr::rename("gene_ref_id_.subject." = "Symbol") %>% 
+      # dplyr::rename("gene_ref_id_.subject." = "Classe") %>% 
+      dplyr::select(gene_ref_id_.subject., Classe, Phenotype, TZP_R, CZA_R, CTX_R),
+    by = c("gene_ref_id_.subject.")
+  ) %>% 
+  dplyr::group_by(sampleID, bin_name, gene_ref_pcm_predict) %>% 
+  summarise(
+    TZP_R_Yes = length(TZP_R[TZP_R %in% c("Yes", "A_Yes")]) > 0,
+    CTX_R_Yes = length(CTX_R[CTX_R %in% c("Yes", "A_Yes")]) > 0,
+    CZA_R_Yes = length(CZA_R[CZA_R %in% c("Yes", "A_Yes")]) > 0,
+    # n_TZP_R_Yes = length(TZP_R[TZP_R %in% c("Yes", "A_Yes")]),
+    # n_TZP_R = length(TZP_R),
+    nnn = n()
+  )
+
+  # dplyr::filter( nn > 1)
+```
+
+Considering the presence or not of a resistant gene in the a MAG, without considering the specific gene, just if there is any or not.
+
+iS BETTER TO ADD THE taxa abundance
+
+
+```{r}
+
+DF_RESGENE_YES <- DF_SAMPLE_SUBJS_DAY %>% 
+  dplyr::select(ACTARMCD, SUBJID, DAY, sampleID) %>% 
+  dplyr::mutate(DRUG_COMPLEX = str_replace_all(str_replace_all(ACTARMCD, "D2", ""), "D1", "")) %>% 
+  dplyr::mutate(
+    DAV = case_when(
+      str_detect(ACTARMCD, "D1") ~ "DAVD1",
+      str_detect(ACTARMCD, "D2") ~ "DAVD2",
+      .default = "NODAV"
+    )
+  ) %>% 
+  dplyr::mutate(DAV = factor(DAV, levels = v_DAV_levels)) %>% 
+  dplyr::mutate(DRUG_COMPLEX = factor(DRUG_COMPLEX, levels = v_DRUG_COMPLEX_levels)) %>% 
+  left_join(
+    DF_RESGENE_summarise,
+    by = c("sampleID")
+  ) %>% 
+  dplyr::filter(!is.na(bin_name))
+
+DF_RESGENE_YES %>% 
+  DT::datatable(filter = "top")
+```
+
+
+```{r}
+  
+```
+
+
+```{r}
+# DF_RESGENE_full_table_final_w_DRUG_RESIST %>% colnames()
+```
+
+
+```{r}
+dfdfdf <- DF_RESGENE_full_table_final_w_DRUG_RESIST %>% 
+  # pull(gene_ref_id_.subject.) %>% unique() %>% length()
+  left_join(
+    DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL,
+    by = c("ACTARMCD", "sampleID", "SUBJID", "DAY", "bin_name")
+  ) %>% 
+  # colnames()
+  group_by(DRUG_COMPLEX, DAV, DAY, gene_ref_pcm_predict, gene_ref_id_.subject., id_tax_phylum, id_tax_class, id_tax_order, id_tax_family, id_tax_genus, id_tax_species) %>% 
+  nest() %>%
+  dplyr::mutate(
+    Stats = map_df(data, ~ceor_stats(.$bin_RelAbun, na.rm = TRUE) )
+  ) %>%
+  unnest(Stats) %>%
+  ungroup() %>% 
+  dplyr::select(-data)
+```
+
+
+```{r}
+DF_BETALACTAMASES_IDS <- dfdfdf %>% 
+  # dplyr::filter(DAY == 1) %>% 
+  group_by(gene_ref_pcm_predict, gene_ref_id_.subject.) %>% 
+  summarise(
+    mean.RelAbun = mean(mean)
+  ) %>% 
+  dplyr::arrange(gene_ref_pcm_predict, desc(mean.RelAbun)) %>% 
+  ungroup() %>%
+  dplyr::mutate(rank_betalactamase_RelAbun = seq(1, length(mean.RelAbun))) %>% 
+  dplyr::mutate(id_gene = rank_betalactamase_RelAbun)
+```
+### Beta-lactamases ids
+
+```{r}
+v_gene_id_class_limits <- c(87.5, 89.5, 125.5)
+
+DF_BETALACTAMASES_IDS %>% 
+  ggplot() +
+  geom_point(aes(x=rank_betalactamase_RelAbun, y=mean.RelAbun, color=gene_ref_pcm_predict) ) +
+  geom_vline(xintercept = v_gene_id_class_limits, linetype="dashed") +
+  # coord_cartesian(
+  #   xlim = c(125, 140)
+  # ) +
+  # scale_y_log10() +
+  scale_color_manual(values = nv_Classes_color) +
+  theme_bla
+
+```
+
+
+```{r}
+# DF_BETALACTAMASES_IDS %>% colnames()
+# BLA_IMPACT_betalactamases_SELECTED %>% pull(CZA_R) %>% unique()
+```
+
+
+
+```{r}
+# DF_BETALACTAMASES_IDS
+# DF_RESGENE_full_table_final_w_DRUG_RESIST
+DF_BETALACTAMASES_IDS %>% 
+  dplyr::select(id_gene, gene_ref_pcm_predict, gene_ref_id_.subject.) %>% 
+  left_join(
+    BLA_IMPACT_betalactamases_SELECTED %>% 
+      dplyr::select(gene_ref_id_.subject., Phenotype, TZP_R, CTX_R, CZA_R, TZP_MIC, CTX_MIC, CZA_MIC),
+    by = c("gene_ref_id_.subject.")
+  ) %>% 
+  dplyr::rename("Gene id" ="id_gene") %>% 
+  dplyr::rename("Class" = "gene_ref_pcm_predict") %>% 
+  dplyr::rename("Gene Reference" = "gene_ref_id_.subject.") %>% 
+  dplyr::rename("Resistant to.TZP" = "TZP_R") %>% 
+  dplyr::rename("Resistant to.CTX" = "CTX_R") %>% 
+  dplyr::rename("Resistant to.CZA" = "CZA_R") %>% 
+  dplyr::rename("MIC.TZP" = "TZP_MIC") %>% 
+  dplyr::rename("MIC.CTX" = "CTX_MIC") %>% 
+  dplyr::rename("MIC.CZA" = "CZA_MIC") %>% 
+  
+  flextable::flextable() %>%
+  flextable::theme_zebra() %>% 
+  flextable::separate_header(opts=c("center-hspan", "span-top"), split = "[.]")
+  # flextable::save_as_docx(path="tablita.docx")
+
+
+```
+
+
+
+```{r}
+DF_RESGENE_BETALACTAMASES <- DF_RESGENE_full_table_final_w_DRUG_RESIST %>% 
+  # pull(gene_ref_id_.subject.) %>% unique() %>% length()
+  left_join(
+    DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL,
+    by = c("ACTARMCD", "sampleID", "SUBJID", "DAY", "bin_name")
+  ) %>% 
+  # colnames()
+  dplyr::select(DRUG_COMPLEX, DAV, SUBJID, DAY, sampleID, bin_name, bin_abundance, bin_RelAbun, gene_ref_pcm_predict, gene_ref_id_.subject., gene_id_.query., CTX_R, CZA_R, TZP_R) %>% 
+  left_join(
+    DF_BETALACTAMASES_IDS %>% dplyr::select(gene_ref_pcm_predict, gene_ref_id_.subject.
+, id_gene),
+    by = c("gene_ref_pcm_predict", "gene_ref_id_.subject.")
+  )
+```
+
+
+
+```{r}
+DF_RESGENE_BETALACTAMASES_baseline <- DF_RESGENE_BETALACTAMASES %>% 
+  dplyr::filter(DAY == 1) %>% 
+  dplyr::rename("bin_abundance_baseline" = "bin_abundance") %>% 
+  dplyr::rename("bin_RelAbun_baseline" = "bin_RelAbun") %>% 
+  dplyr::select(DRUG_COMPLEX, DAV, SUBJID, id_gene, contains("_baseline"), contains("_R") )
+
+# DF_RESGENE_BETALACTAMASES %>% colnames() %>% paste0(collapse = "', '")
+DF_RESGENE_BETALACTAMASES_DAYZ_6_37 <- DF_RESGENE_BETALACTAMASES %>% 
+  dplyr::filter(DAY != 1) %>% 
+  left_join(
+    DF_RESGENE_BETALACTAMASES_baseline,
+    by = c("DRUG_COMPLEX", "DAV", "SUBJID", "gene_ref_pcm_predict", "gene_ref_id_.subject.", "CTX_R", "CZA_R", "TZP_R", "id_gene")
+  )
+```
+
+```{r}
+DF_RESGENE_BETALACTAMASES_baseline %>% 
+  dplyr::filter(is.na(bin_RelAbun_baseline))
+  # pull(bin_RelAbun_baseline)
+```
+
+### PTZ
+
+```{r, fig.height=8, fig.width=12}
+v_Resistance_levels <- c("Yes", "No", NA)
+
+str_DRUG_COMPLEX_tmp <- "PTZ"
+str_DAV_tmp <- "NODAV"
+
+DF_RESGENE_BETALACTAMASES_DAYZ_6_37 %>% 
+  dplyr::mutate(CTX_R = factor(CTX_R, levels = v_Resistance_levels)) %>% 
+  dplyr::select(DRUG_COMPLEX, DAV, SUBJID, id_gene, DAY, contains("bin_RelAbun"), contains("bin_abundance"), CTX_R, TZP_R, CZA_R) %>% 
+  dplyr::filter(DRUG_COMPLEX == str_DRUG_COMPLEX_tmp) %>% 
+  dplyr::filter(DAV == str_DAV_tmp) %>% 
+  ggplot() + 
+  geom_point(aes(x=bin_RelAbun/bin_RelAbun_baseline, y=id_gene), alpha=0.25, size=3) +
+  geom_vline(xintercept = 1, color="red", linetype = "dashed") +
+  scale_y_reverse() +
+  # scale_y_continuos(trans="reverse") +
+  scale_x_log10() +
+  facet_grid(CTX_R~DAY) +
+  theme_bla +
+  theme(strip.background = element_blank()) +
+  theme(strip.text = element_text(colour = 'black', size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+```
+
+
+
+```{r}
+df_serapes <- DF_RESGENE_BETALACTAMASES_DAYZ_6_37 %>% 
+  # dplyr::mutate(TZP_R = factor(TZP_R, levels = v_Resistance_levels)) %>% 
+  dplyr::select(DRUG_COMPLEX, DAV, SUBJID, id_gene, DAY, contains("bin_RelAbun"), contains("bin_abundance"), CTX_R, CZA_R, TZP_R, gene_ref_pcm_predict) %>% 
+  pivot_longer(cols=c("CTX_R", "CZA_R", "TZP_R"), values_to = "Resist", names_to = "Resist_to") %>% 
+  dplyr::mutate(Resist_to = str_replace_all(Resist_to, "_R", "")) %>% 
+  dplyr::mutate(Resist = factor(Resist, levels = v_Resistance_levels)) %>% 
+  dplyr::mutate(increase_factor = ifelse( is.na(bin_RelAbun_baseline) , Inf, bin_RelAbun/bin_RelAbun_baseline ) ) %>% 
+  # dplyr::filter(is.na(bin_abundance_baseline))
+
+  dplyr::filter(DRUG_COMPLEX == str_DRUG_COMPLEX_tmp) %>%
+  dplyr::filter(DAV == str_DAV_tmp)
+```
+
+```{r}
+df_serapes %>% 
+  dplyr::filter(increase_factor>1) %>% 
+  dplyr::filter(Resist_to == "CZA") %>% 
+  dplyr::filter(Resist == "Yes") %>% 
+  dplyr::filter(DAY == 37) %>% 
+  pull(id_gene) %>% unique() %>% length()
+
+```
+
+
+
+```{r}
+df_serapes %>% 
+  dplyr::filter(increase_factor>1) %>% 
+  dplyr::filter(Resist_to == "CZA") %>% 
+  dplyr::filter(DAY == 37) %>% 
+  pull(id_gene) %>% unique() %>% length()
+
+```
+
+
+### CZA6
+
+```{r, fig.height=8, fig.width=12}
+v_Resistance_levels <- c("Yes", "No", NA)
+
+str_DRUG_COMPLEX_tmp <- "CZA"
+str_DAV_tmp <- "NODAV"
+
+DF_RESGENE_BETALACTAMASES_DAYZ_6_37 %>% 
+  dplyr::mutate(CZA_R = factor(CZA_R, levels = v_Resistance_levels)) %>% 
+  dplyr::select(DRUG_COMPLEX, DAV, SUBJID, id_gene, DAY, contains("bin_RelAbun"), contains("bin_abundance"), CTX_R, CZA_R, TZP_R, gene_ref_pcm_predict) %>% 
+  dplyr::filter(DRUG_COMPLEX == str_DRUG_COMPLEX_tmp) %>% 
+  dplyr::filter(DAV == str_DAV_tmp) %>% 
+  
+  ggplot() + 
+  geom_point(aes(x=bin_RelAbun/bin_RelAbun_baseline, y=id_gene, shape=gene_ref_pcm_predict), alpha=0.25, size=4) +
+  geom_vline(xintercept = 1, color="red", linetype = "dashed") +
+  scale_y_reverse() +
+  # scale_y_continuos(trans="reverse") +
+  scale_x_log10() +
+  facet_grid(CZA_R~DAY) +
+  theme_bla +
+  theme(strip.background = element_blank()) +
+  theme(strip.text = element_text(colour = 'black', size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+```
+
+
+```{r}
+df_serapes <- DF_RESGENE_BETALACTAMASES_DAYZ_6_37 %>% 
+  # dplyr::mutate(TZP_R = factor(TZP_R, levels = v_Resistance_levels)) %>% 
+  dplyr::select(DRUG_COMPLEX, DAV, SUBJID, id_gene, DAY, contains("bin_RelAbun"), contains("bin_abundance"), CTX_R, CZA_R, TZP_R, gene_ref_pcm_predict) %>% 
+  pivot_longer(cols=c("CTX_R", "CZA_R", "TZP_R"), values_to = "Resist", names_to = "Resist_to") %>% 
+  dplyr::mutate(Resist_to = str_replace_all(Resist_to, "_R", "")) %>% 
+  dplyr::mutate(Resist = factor(Resist, levels = v_Resistance_levels)) %>% 
+  dplyr::mutate(increase_factor = ifelse( is.na(bin_RelAbun_baseline) , Inf, bin_RelAbun/bin_RelAbun_baseline ) ) %>% 
+  # dplyr::filter(is.na(bin_abundance_baseline))
+
+  dplyr::filter(DRUG_COMPLEX == str_DRUG_COMPLEX_tmp) %>%
+  dplyr::filter(DAV == str_DAV_tmp)
+```
+
+```{r}
+df_serapes %>% 
+  dplyr::filter(increase_factor>1) %>% 
+  dplyr::filter(Resist_to == "CZA") %>% 
+  dplyr::filter(Resist == "Yes") %>% 
+  dplyr::filter(DAY == 37) %>% 
+  pull(id_gene) %>% unique() %>% length()
+
+```
+
+
+
+```{r}
+df_serapes %>% 
+  dplyr::filter(increase_factor>1) %>% 
+  dplyr::filter(Resist_to == "CZA") %>% 
+  dplyr::filter(DAY == 37) %>% 
+  pull(id_gene) %>% unique() %>% length()
+
+```
+
+
+
+### CRO
+
+This plots doesn't include the appereance of new 
+
+```{r, fig.height=8, fig.width=12}
+v_Resistance_levels <- c("Yes", "No", NA)
+# nv_drug_complex_color_tmp
+nv_Resist_to_shape <- c(
+  "CTX" = 16, # 1,
+  "CZA" = 2, # 17, # 2,
+  "TZP" = 0 #d15 # 0
+)
+
+str_DRUG_COMPLEX_tmp <- "CRO"
+str_DAV_tmp <- "NODAV"
+# str_SUBJID_tmp <- "10015"
+str_SUBJID_tmp <- unique( pull(
+  DF_RESGENE_BETALACTAMASES_DAYZ_6_37 %>% 
+    dplyr::filter(DRUG_COMPLEX == str_DRUG_COMPLEX_tmp) %>% 
+    dplyr::filter(DAV == str_DAV_tmp),
+  SUBJID
+) )[2]
+
+lbl_x <- "Relative Abundance ratio from baseline"
+lbl_y <- "Gene id"
+
+DF_RESGENE_BETALACTAMASES_DAYZ_6_37 %>% 
+  # dplyr::mutate(TZP_R = factor(TZP_R, levels = v_Resistance_levels)) %>% 
+  dplyr::select(DRUG_COMPLEX, DAV, SUBJID, id_gene, DAY, contains("bin_RelAbun"), contains("bin_abundance"), CTX_R, CZA_R, TZP_R, gene_ref_pcm_predict) %>% 
+  pivot_longer(cols=c("CTX_R", "CZA_R", "TZP_R"), values_to = "Resist", names_to = "Resist_to") %>% 
+  dplyr::mutate(Resist_to = str_replace_all(Resist_to, "_R", "")) %>% 
+  dplyr::mutate(Resist = factor(Resist, levels = v_Resistance_levels)) %>% 
+  dplyr::mutate(increase_factor = ifelse( is.na(bin_RelAbun_baseline) , Inf, bin_RelAbun/bin_RelAbun_baseline ) ) %>% 
+  # dplyr::filter(is.na(bin_abundance_baseline))
+
+  dplyr::filter(DRUG_COMPLEX == str_DRUG_COMPLEX_tmp) %>%
+  dplyr::filter(DAV == str_DAV_tmp) %>%
+  # dplyr::filter(SUBJID == str_SUBJID_tmp) %>% 
+  ggplot() + 
+  geom_point(aes(x=increase_factor, y=id_gene, shape=Resist_to, color=Resist_to), alpha=1, size=3) +
+  # geom_point(aes(x=bin_RelAbun/bin_RelAbun_baseline, y=id_gene, shape=Resist_to, color=Resist_to), alpha=0.5, size=3) +
+  geom_vline(xintercept = 1, color="black", linetype = "solid") +
+  geom_hline(yintercept = v_gene_id_class_limits, linetype ="dashed") +
+  scale_y_reverse() +
+  # scale_y_continuos(trans="reverse") +
+  scale_x_log10() +
+  facet_grid(Resist~DAY) +
+  scale_color_manual(values = nv_drug_complex_color_tmp) +
+  scale_shape_manual(values = nv_Resist_to_shape) +
+  labs(x=lbl_x, y=lbl_y) +
+  theme_bla +
+  theme(strip.background = element_blank()) +
+  theme(strip.text = element_text(colour = 'black', size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+```
+
+```{r}
+df_serapes <- DF_RESGENE_BETALACTAMASES_DAYZ_6_37 %>% 
+  # dplyr::mutate(TZP_R = factor(TZP_R, levels = v_Resistance_levels)) %>% 
+  dplyr::select(DRUG_COMPLEX, DAV, SUBJID, id_gene, DAY, contains("bin_RelAbun"), contains("bin_abundance"), CTX_R, CZA_R, TZP_R, gene_ref_pcm_predict) %>% 
+  pivot_longer(cols=c("CTX_R", "CZA_R", "TZP_R"), values_to = "Resist", names_to = "Resist_to") %>% 
+  dplyr::mutate(Resist_to = str_replace_all(Resist_to, "_R", "")) %>% 
+  dplyr::mutate(Resist = factor(Resist, levels = v_Resistance_levels)) %>% 
+  dplyr::mutate(increase_factor = ifelse( is.na(bin_RelAbun_baseline) , Inf, bin_RelAbun/bin_RelAbun_baseline ) ) %>% 
+  # dplyr::filter(is.na(bin_abundance_baseline))
+
+  dplyr::filter(DRUG_COMPLEX == str_DRUG_COMPLEX_tmp) %>%
+  dplyr::filter(DAV == str_DAV_tmp)
+```
+
+```{r}
+df_serapes
+```
+
+
+
+```{r}
+df_serapes %>% 
+  dplyr::filter(increase_factor>1) %>% 
+  dplyr::filter(Resist_to == "CTX") %>% 
+  dplyr::filter(Resist == "Yes") %>% 
+  dplyr::filter(DAY == 37) %>% 
+  pull(id_gene) %>% unique() %>% length()
+
+```
+
+
+
+```{r}
+df_serapes %>% 
+  dplyr::filter(increase_factor>1) %>% 
+  dplyr::filter(Resist_to == "CTX") %>% 
+  dplyr::filter(DAY == 37) %>% 
+  pull(id_gene) %>% unique() %>% length()
+
+```
+
+
+```{r}
+df_serapes %>% 
+  dplyr::filter(increase_factor>1) %>% 
+  pull(id_gene) %>% unique() %>% length()
+```
+
+What is the number 
+
+### Mean relative abundance
+
+```{r, fig.height=8, fig.width=12}
+str_DRUG_COMPLEX_tmp <- "CTX"
+str_DAV_tmp <- "NODAV"
+
+
+DF_RESGENE_BETALACTAMASES_DAYZ_6_37 %>% 
+  dplyr::select(DRUG_COMPLEX, DAV, SUBJID, id_gene, DAY, contains("bin_RelAbun"), contains("bin_abundance"), CTX_R, CZA_R, TZP_R, gene_ref_pcm_predict) %>% 
+  pivot_longer(cols=c("CTX_R", "CZA_R", "TZP_R"), values_to = "Resist", names_to = "Resist_to") %>% 
+  dplyr::mutate(Resist_to = str_replace_all(Resist_to, "_R", "")) %>% 
+  dplyr::mutate(Resist = factor(Resist, levels = v_Resistance_levels)) %>% 
+  dplyr::mutate(increase_factor = ifelse( is.na(bin_RelAbun_baseline) , Inf, bin_RelAbun/bin_RelAbun_baseline ) ) %>% 
+  group_by(DAY, DRUG_COMPLEX, DAV, id_gene, Resist_to, Resist) %>% 
+  summarise(
+    bin_abundance.mean = mean(bin_abundance),
+    bin_RelAbun.mean = mean(bin_RelAbun),
+    bin_abundance_baseline.mean = mean(bin_abundance_baseline),
+    bin_RelAbun_baseline.mean = mean(bin_RelAbun_baseline)
+  ) %>% 
+  ggplot() + 
+  geom_point(aes(x=bin_RelAbun.mean/bin_RelAbun_baseline.mean, y=id_gene, shape=Resist_to, color=Resist_to), alpha=0.5, size=3) +
+  geom_vline(xintercept = 1, color="black", linetype = "solid") +
+  geom_hline(yintercept = v_gene_id_class_limits, linetype ="dashed") +
+  scale_y_reverse() +
+  # scale_y_continuos(trans="reverse") +
+  scale_x_log10() +
+  facet_grid(Resist~DAY) +
+  scale_color_manual(values = nv_drug_complex_color_tmp) +
+  labs(x=lbl_x, y=lbl_y) +
+  theme_bla +
+  theme(strip.background = element_blank()) +
+  theme(strip.text = element_text(colour = 'black', size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+
+
+```
+
+
+
+There is no increase in the identified resistant genes for the PTZ administratrion, but what happens with the increase of resistant genes of the against the other antibiotics in this group?
+
+For CTX
+
+```{r, fig.height=8, fig.width=12}
+v_Resistance_levels <- c("Yes", "No", NA)
+
+str_DRUG_COMPLEX_tmp <- "PTZ"
+str_DAV_tmp <- "NODAV"
+
+DF_RESGENE_BETALACTAMASES_DAYZ_6_37 %>% 
+  dplyr::mutate(TZP_R = factor(TZP_R, levels = v_Resistance_levels)) %>% 
+  dplyr::mutate(CTX_R = factor(CTX_R, levels = v_Resistance_levels)) %>% 
+  dplyr::mutate(CZA_R = factor(CZA_R, levels = v_Resistance_levels)) %>% 
+  dplyr::select(DRUG_COMPLEX, DAV, SUBJID, id_gene, DAY, contains("bin_RelAbun"), contains("bin_abundance"), CTX_R, CZA_R, TZP_R) %>% 
+  dplyr::filter(DRUG_COMPLEX == str_DRUG_COMPLEX_tmp) %>% 
+  dplyr::filter(DAV == str_DAV_tmp) %>% 
+  ggplot() + 
+  geom_point(aes(x=bin_RelAbun/bin_RelAbun_baseline, y=id_gene), alpha=0.25, size=3) +
+  geom_vline(xintercept = 1, color="red", linetype = "dashed") +
+  scale_y_reverse() +
+  # scale_y_continuos(trans="reverse") +
+  scale_x_log10() +
+  facet_grid(CTX_R~DAY) +
+  theme_bla +
+  theme(strip.background = element_blank()) +
+  theme(strip.text = element_text(colour = 'black', size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+```
+
+
+
+For 
+
+
+```{r, fig.height=8, fig.width=12}
+v_Resistance_levels <- c("Yes", "No", NA)
+
+str_DRUG_COMPLEX_tmp <- "PTZ"
+str_DAV_tmp <- "NODAV"
+
+DF_RESGENE_BETALACTAMASES_DAYZ_6_37 %>% 
+  dplyr::mutate(TZP_R = factor(TZP_R, levels = v_Resistance_levels)) %>% 
+  dplyr::mutate(CTX_R = factor(CTX_R, levels = v_Resistance_levels)) %>% 
+  dplyr::mutate(CZA_R = factor(CZA_R, levels = v_Resistance_levels)) %>% 
+  dplyr::select(DRUG_COMPLEX, DAV, SUBJID, id_gene, DAY, contains("bin_RelAbun"), contains("bin_abundance"), CTX_R, CZA_R, TZP_R) %>% 
+  dplyr::filter(DRUG_COMPLEX == str_DRUG_COMPLEX_tmp) %>% 
+  dplyr::filter(DAV == str_DAV_tmp) %>% 
+  ggplot() + 
+  geom_point(aes(x=bin_RelAbun/bin_RelAbun_baseline, y=id_gene), alpha=0.25, size=3) +
+  geom_vline(xintercept = 1, color="red", linetype = "dashed") +
+  scale_y_reverse() +
+  # scale_y_continuos(trans="reverse") +
+  scale_x_log10() +
+  facet_grid(CZA_R~DAY) +
+  theme_bla +
+  theme(strip.background = element_blank()) +
+  theme(strip.text = element_text(colour = 'black', size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+```
+
+
+```{r}
+DF_RESGENE_BETALACTAMASES %>% 
+  dplyr::filter(DRUG_COMPLEX == "CRO") %>% 
+  dplyr::filter(DAV == "NODAV") %>% 
+  dplyr::mutate(DAY = as.factor(DAY)) %>% 
+  ggplot() +
+  geom_point( aes(x=bin_RelAbun, y=id_gene, color=DAY) ) +
+  theme_bla
+```
+
+
+
+```{r}
+# DF_BETALACTAMASES_IDS
+```
+
+
+
+
+```{r}
+# DF_TAXA_ABUNDANCE_w_ID_w_RESIST %>% colnames()
+```
+
+
+```{r}
+DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL %>% 
+  left_join(
+    DF_RESGENE_YES,
+    by=c("DRUG_COMPLEX", "DAV", "ACTARMCD", "SUBJID", "DAY", "sampleID", "bin_name")
+  )
+```
+
+
+### TZP_R_Yes
+Relative abundance of MAGs for TZP
+
+
+
+```{r}
+DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES_MAG_RELABUN_TMP <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES %>% 
+  dplyr::filter(!is.na(TZP_R_Yes)) %>% 
+  group_by(DRUG_COMPLEX, DAV, SUBJID, DAY, TZP_R_Yes) %>% 
+  summarise(MAG_w_betalactamase_RelAbun = sum(bin_RelAbun)) %>% 
+  ungroup() %>% 
+  dplyr::filter(TZP_R_Yes == TRUE) %>%
+  dplyr::filter(DRUG_COMPLEX %in% c("Ct", "PTZ"))
+
+DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES_MAG_RELABUN_TMP %>% 
+  DT::datatable(filter = "top")
+```
+
+
+
+```{r}
+get_wilcox_pvalue <- function(int_DAY_1, int_DAY_2, df_4_mnlx_tmp_TMP){
+  b_DAY_1 <- df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_1) %>% nrow() > 0
+  b_DAY_2 <- df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_2) %>% nrow() > 0
+  if ( b_DAY_1 & b_DAY_2 ){
+    p.value <- wilcox.test(
+      df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_1) %>% pull(MAG_w_betalactamase_RelAbun),
+      df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_2) %>% pull(MAG_w_betalactamase_RelAbun),
+      correct = FALSE
+    )$p.value
+  }else{
+    p.value <- NA
+  }
+  return(p.value)
+}
+
+
+int_DAY_TMP_1 <- 1
+int_DAY_TMP_2 <- 6
+
+DF_TMPTMP_p.value_A <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES_MAG_RELABUN_TMP %>% 
+  group_by(DRUG_COMPLEX, DAV) %>% 
+  do(pvalue = get_wilcox_pvalue(int_DAY_TMP_1, int_DAY_TMP_2, .) ) %>% 
+  unnest() %>% 
+  dplyr::mutate(DAY_1 = int_DAY_TMP_1, DAY_2 = int_DAY_TMP_2)
+
+# DF_TMPTMP.value_A %>% dplyr::filter(pvalue < 0.05)
+
+
+int_DAY_TMP_1 <- 1
+int_DAY_TMP_2 <- 37
+
+DF_TMPTMP_p.value_B <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES_MAG_RELABUN_TMP %>% 
+  group_by(DRUG_COMPLEX, DAV) %>% 
+  do(pvalue = get_wilcox_pvalue(int_DAY_TMP_1, int_DAY_TMP_2, .) ) %>% 
+  unnest() %>% 
+  dplyr::mutate(DAY_1 = int_DAY_TMP_1, DAY_2 = int_DAY_TMP_2)
+
+
+int_DAY_TMP_1 <- 6
+int_DAY_TMP_2 <- 37
+
+DF_TMPTMP_p.value_C <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES_MAG_RELABUN_TMP %>% 
+  group_by(DRUG_COMPLEX, DAV) %>% 
+  do(pvalue = get_wilcox_pvalue(int_DAY_TMP_1, int_DAY_TMP_2, .) ) %>% 
+  unnest() %>% 
+  dplyr::mutate(DAY_1 = int_DAY_TMP_1, DAY_2 = int_DAY_TMP_2)
+
+
+DF_TMPTMP_p.value <- bind_rows(
+  list(
+    DF_TMPTMP_p.value_A,
+    DF_TMPTMP_p.value_B,
+    DF_TMPTMP_p.value_C
+  )
+) %>% dplyr::mutate(
+    DAY_1 = factor(DAY_1, levels=v_DAY_levels),
+    DAY_2 = factor(DAY_2, levels=v_DAY_levels)
+  )
+
+DF_TMPTMP_p.value %>% dplyr::filter(pvalue <= 0.1)
+```
+
+
+
+
+```{r, fig.height=4, fig.width=12}
+lbl_x <- "Day"
+lbl_y <- "" #"Relative Abundance of MAGs \nwith Resistant Beta-Lactamase"
+# plt_tmp_PTZ <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES %>% 
+#   dplyr::filter(!is.na(TZP_R_Yes)) %>% 
+#   group_by(DRUG_COMPLEX, DAV, SUBJID, DAY, TZP_R_Yes) %>% 
+#   summarise(MAG_w_betalactamase_RelAbun = sum(bin_RelAbun)) %>% 
+#   ungroup() %>% 
+  # dplyr::filter(TZP_R_Yes == TRUE) %>%
+  # dplyr::filter(DRUG_COMPLEX %in% c("Ct", "PTZ")) %>% 
+plt_tmp_PTZ <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES_MAG_RELABUN_TMP %>% 
+  
+  # pull(DAY) %>% unique()
+  ggplot() +
+  # geom_boxplot(aes(x=as.factor(DAY), y=MAG_w_betalactamase_RelAbun), color=nv_drug_complex_color_tmp["TZP"]) +
+  # geom_jitter(aes(x=as.factor(DAY), y=MAG_w_betalactamase_RelAbun), color=nv_drug_complex_color_tmp["TZP"] )+
+  geom_boxplot(aes(x=as.factor(DAY), y=MAG_w_betalactamase_RelAbun), color=nv_drug_complex_color_tmp["TZP"], outlier.shape=NA) +
+  geom_jitter(aes(x=as.factor(DAY), y=MAG_w_betalactamase_RelAbun), color="black", alpha=0.5 )+
+
+  # geom_line(aes(x=DAY, y=MAG_w_betalactamase_RelAbun, group=SUBJID, color=TZP_R_Yes)) +
+  labs(x=lbl_x, y=lbl_y) +
+  facet_wrap(DRUG_COMPLEX~DAV, nrow = 1) +
+  # coord_cartesian(
+  #   ylim = c(0, 0.5)
+  # ) +
+  theme_bla +
+  theme(strip.background = element_blank()) +
+  theme(strip.text = element_text(colour = 'black', size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+
+plt_tmp_PTZ #+
+  # coord_cartesian(
+  #   ylim = c(0, 0.05)
+  # )
+```
+
+
+
+### CTX_R_Yes
+Relative abundance of MAGs for CRO
+
+```{r}
+DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES_MAG_RELABUN_TMP <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES %>% 
+  dplyr::filter(!is.na(CTX_R_Yes)) %>% 
+  group_by(DRUG_COMPLEX, DAV, SUBJID, DAY, CTX_R_Yes) %>% 
+  summarise(MAG_w_betalactamase_RelAbun = sum(bin_RelAbun)) %>% 
+  ungroup() %>% 
+  dplyr::filter(CTX_R_Yes == TRUE) %>%
+  dplyr::filter(DRUG_COMPLEX %in% c("Ct", "CRO"))
+
+DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES_MAG_RELABUN_TMP %>% 
+  DT::datatable(filter = "top")
+
+```
+
+
+```{r}
+get_wilcox_pvalue <- function(int_DAY_1, int_DAY_2, df_4_mnlx_tmp_TMP){
+  b_DAY_1 <- df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_1) %>% nrow() > 0
+  b_DAY_2 <- df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_2) %>% nrow() > 0
+  if ( b_DAY_1 & b_DAY_2 ){
+    p.value <- wilcox.test(
+      df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_1) %>% pull(MAG_w_betalactamase_RelAbun),
+      df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_2) %>% pull(MAG_w_betalactamase_RelAbun),
+      correct = FALSE
+    )$p.value
+  }else{
+    p.value <- NA
+  }
+  return(p.value)
+}
+
+
+int_DAY_TMP_1 <- 1
+int_DAY_TMP_2 <- 6
+
+DF_TMPTMP_p.value_A <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES_MAG_RELABUN_TMP %>% 
+  group_by(DRUG_COMPLEX, DAV) %>% 
+  do(pvalue = get_wilcox_pvalue(int_DAY_TMP_1, int_DAY_TMP_2, .) ) %>% 
+  unnest() %>% 
+  dplyr::mutate(DAY_1 = int_DAY_TMP_1, DAY_2 = int_DAY_TMP_2)
+
+# DF_TMPTMP.value_A %>% dplyr::filter(pvalue < 0.05)
+
+
+int_DAY_TMP_1 <- 1
+int_DAY_TMP_2 <- 37
+
+DF_TMPTMP_p.value_B <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES_MAG_RELABUN_TMP %>% 
+  group_by(DRUG_COMPLEX, DAV) %>% 
+  do(pvalue = get_wilcox_pvalue(int_DAY_TMP_1, int_DAY_TMP_2, .) ) %>% 
+  unnest() %>% 
+  dplyr::mutate(DAY_1 = int_DAY_TMP_1, DAY_2 = int_DAY_TMP_2)
+
+
+int_DAY_TMP_1 <- 6
+int_DAY_TMP_2 <- 37
+
+DF_TMPTMP_p.value_C <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES_MAG_RELABUN_TMP %>% 
+  group_by(DRUG_COMPLEX, DAV) %>% 
+  do(pvalue = get_wilcox_pvalue(int_DAY_TMP_1, int_DAY_TMP_2, .) ) %>% 
+  unnest() %>% 
+  dplyr::mutate(DAY_1 = int_DAY_TMP_1, DAY_2 = int_DAY_TMP_2)
+
+
+DF_TMPTMP_p.value <- bind_rows(
+  list(
+    DF_TMPTMP_p.value_A,
+    DF_TMPTMP_p.value_B,
+    DF_TMPTMP_p.value_C
+  )
+) %>% dplyr::mutate(
+    DAY_1 = factor(DAY_1, levels=v_DAY_levels),
+    DAY_2 = factor(DAY_2, levels=v_DAY_levels)
+  )
+
+DF_TMPTMP_p.value %>% dplyr::filter(pvalue <= 0.05)
+```
+
+
+```{r, fig.height=4, fig.width=12}
+lbl_x <- ""# "Day"
+lbl_y <- "" #"Relative Abundance of MAGs \nwith Resistant Beta-Lactamase"
+# plt_tmp_CRO <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES %>% 
+#   dplyr::filter(!is.na(CTX_R_Yes)) %>% 
+#   group_by(DRUG_COMPLEX, DAV, SUBJID, DAY, CTX_R_Yes) %>% 
+#   summarise(MAG_w_betalactamase_RelAbun = sum(bin_RelAbun)) %>% 
+#   ungroup() %>% 
+  # dplyr::filter(CTX_R_Yes == TRUE) %>%
+  # dplyr::filter(DRUG_COMPLEX %in% c("Ct", "CRO")) %>% 
+
+plt_tmp_CRO <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES_MAG_RELABUN_TMP %>% 
+  # pull(DAY) %>% unique()
+  ggplot() +
+  geom_boxplot(aes(x=as.factor(DAY), y=MAG_w_betalactamase_RelAbun), color=nv_drug_complex_color_tmp["CTX"], outlier.shape=NA) +
+  geom_jitter(aes(x=as.factor(DAY), y=MAG_w_betalactamase_RelAbun), color="black", alpha=0.5 )+
+  # geom_line(aes(x=DAY, y=MAG_w_betalactamase_RelAbun, group=SUBJID, color=TZP_R_Yes)) +
+  labs(x=lbl_x, y=lbl_y) +
+  facet_wrap(DRUG_COMPLEX~DAV, nrow = 1) +
+  # coord_cartesian(
+  #   ylim = c(0, 0.5)
+  # ) +
+  theme_bla +
+  theme(strip.background = element_blank()) +
+  theme(strip.text = element_text(colour = 'black', size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+plt_tmp_CRO
+```
+
+
+### CZA_R_Yes
+Relative abundance of MAGs for CZA
+
+
+
+```{r}
+DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES_MAG_RELABUN_TMP <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES %>% 
+  dplyr::filter(!is.na(CZA_R_Yes)) %>% 
+  group_by(DRUG_COMPLEX, DAV, SUBJID, DAY, CZA_R_Yes) %>% 
+  summarise(MAG_w_betalactamase_RelAbun = sum(bin_RelAbun)) %>% 
+  ungroup() %>% 
+  dplyr::filter(CZA_R_Yes == TRUE) %>%
+  dplyr::filter(DRUG_COMPLEX %in% c("Ct", "CRO"))
+
+DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES_MAG_RELABUN_TMP %>% 
+  DT::datatable(filter = "top")
+
+```
+
+
+```{r}
+get_wilcox_pvalue <- function(int_DAY_1, int_DAY_2, df_4_mnlx_tmp_TMP){
+  b_DAY_1 <- df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_1) %>% nrow() > 0
+  b_DAY_2 <- df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_2) %>% nrow() > 0
+  if ( b_DAY_1 & b_DAY_2 ){
+    p.value <- wilcox.test(
+      df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_1) %>% pull(MAG_w_betalactamase_RelAbun),
+      df_4_mnlx_tmp_TMP %>% dplyr::filter(DAY == int_DAY_2) %>% pull(MAG_w_betalactamase_RelAbun),
+      correct = FALSE
+    )$p.value
+  }else{
+    p.value <- NA
+  }
+  return(p.value)
+}
+
+
+int_DAY_TMP_1 <- 1
+int_DAY_TMP_2 <- 6
+
+DF_TMPTMP_p.value_A <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES_MAG_RELABUN_TMP %>% 
+  group_by(DRUG_COMPLEX, DAV) %>% 
+  do(pvalue = get_wilcox_pvalue(int_DAY_TMP_1, int_DAY_TMP_2, .) ) %>% 
+  unnest() %>% 
+  dplyr::mutate(DAY_1 = int_DAY_TMP_1, DAY_2 = int_DAY_TMP_2)
+
+# DF_TMPTMP.value_A %>% dplyr::filter(pvalue < 0.05)
+
+
+int_DAY_TMP_1 <- 1
+int_DAY_TMP_2 <- 37
+
+DF_TMPTMP_p.value_B <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES_MAG_RELABUN_TMP %>% 
+  group_by(DRUG_COMPLEX, DAV) %>% 
+  do(pvalue = get_wilcox_pvalue(int_DAY_TMP_1, int_DAY_TMP_2, .) ) %>% 
+  unnest() %>% 
+  dplyr::mutate(DAY_1 = int_DAY_TMP_1, DAY_2 = int_DAY_TMP_2)
+
+
+int_DAY_TMP_1 <- 6
+int_DAY_TMP_2 <- 37
+
+DF_TMPTMP_p.value_C <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES_MAG_RELABUN_TMP %>% 
+  group_by(DRUG_COMPLEX, DAV) %>% 
+  do(pvalue = get_wilcox_pvalue(int_DAY_TMP_1, int_DAY_TMP_2, .) ) %>% 
+  unnest() %>% 
+  dplyr::mutate(DAY_1 = int_DAY_TMP_1, DAY_2 = int_DAY_TMP_2)
+
+
+DF_TMPTMP_p.value <- bind_rows(
+  list(
+    DF_TMPTMP_p.value_A,
+    DF_TMPTMP_p.value_B,
+    DF_TMPTMP_p.value_C
+  )
+) %>% dplyr::mutate(
+    DAY_1 = factor(DAY_1, levels=v_DAY_levels),
+    DAY_2 = factor(DAY_2, levels=v_DAY_levels)
+  )
+
+DF_TMPTMP_p.value %>% dplyr::filter(pvalue <= 0.05)
+```
+
+
+```{r, fig.height=4, fig.width=12}
+lbl_x <- "" #"Day"
+lbl_y <- "" #"Relative Abundance of MAGs \nwith Resistant Beta-Lactamase"
+# plt_tmp_CZA <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES %>% 
+#   dplyr::filter(!is.na(CZA_R_Yes)) %>% 
+#   group_by(DRUG_COMPLEX, DAV, SUBJID, DAY, CZA_R_Yes) %>% 
+#   summarise(MAG_w_betalactamase_RelAbun = sum(bin_RelAbun)) %>% 
+#   ungroup() %>% 
+#   dplyr::filter(CZA_R_Yes == TRUE) %>%
+#   dplyr::filter(DRUG_COMPLEX %in% c("Ct", "CZA")) %>% 
+plt_tmp_CZA <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL_w_RESGEN_YES_MAG_RELABUN_TMP %>% 
+  # pull(DAY) %>% unique()
+  ggplot() +
+  # geom_boxplot(aes(x=as.factor(DAY), y=MAG_w_betalactamase_RelAbun), color=nv_drug_complex_color_tmp["CZA"]) +
+  geom_boxplot(aes(x=as.factor(DAY), y=MAG_w_betalactamase_RelAbun), color=nv_drug_complex_color_tmp["CZA"], outlier.shape=NA) +
+  geom_jitter(aes(x=as.factor(DAY), y=MAG_w_betalactamase_RelAbun), color="black", alpha=0.5 )+
+  # geom_line(aes(x=DAY, y=MAG_w_betalactamase_RelAbun, group=SUBJID, color=TZP_R_Yes)) +
+  labs(x=lbl_x, y=lbl_y) +
+  facet_wrap(DRUG_COMPLEX~DAV, nrow = 1) +
+  # coord_cartesian(
+  #   ylim = c(0, 0.5)
+  # ) +
+  theme_bla +
+  theme(strip.background = element_blank()) +
+  theme(strip.text = element_text(colour = 'black', size = 15)) +
+  theme(panel.border = element_rect(colour = "black", fill = NA) )
+
+plt_tmp_CZA
+```
+
+### cowplot of CRO, CZA, PTZ
+
+```{r, fig.height=9, fig.width=12}
+plt_merged <- cowplot::plot_grid(
+  plt_tmp_CRO + coord_cartesian(ylim = c(0, 0.25)),
+  plt_tmp_CZA,
+  plt_tmp_PTZ,
+  ncol = 1,
+  rel_heights = c(1, 1, 1)
+)
+
+y.grob <- grid::textGrob("Relative Abundance of MAGs with Resistant Beta-Lactamase", 
+                   gp=grid::gpar(fontsize=15), rot=90)
+
+gridExtra::grid.arrange(gridExtra::arrangeGrob(plt_merged, left = y.grob))
+# grid.arrange(arrangeGrob(plot, left = y.grob, bottom = x.grob))
+# cowplot::ggdraw(cowplot::add_sub(plt_merged, "Label", vpadding=grid::unit(0,"lines"),y=6, x=0.5, vjust=4.5))
+# cowplot::ggdraw(add_sub(plt_merged, "Label", vpadding=grid::unit(0,"lines"),y=6, x=0.5, vjust=4.5))
+```
+
+
+```{r}
+plt_tmp_CRO + coord_cartesian(ylim = c(0, 0.15))
+```
+
+
+```{r}
+nv_drug_complex_color_tmp
+```
+
+
+
+```{r}
+DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL %>% colnames()
+```
+
+
+```{r}
+DF_RESGENE_YES %>% colnames()
+```
+
+
+
+```{r}
+DF_TAXA_ABUNDANCE_w_ID %>% 
+  colnames()
+```
+
+
+```{r}
+DF_SHANNON_bits_SHTGN_w_FINAL_THRESHOLD
+```
+
+
+
+
+
+
+
+
+### gene abundance evolution
+
+
+
+```{r}
+df_aaa <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL %>% 
+  left_join(
+    DF_RESGENE_BETALACTAMASES %>% 
+      dplyr::select(DRUG_COMPLEX, DAV, SUBJID, DAY, sampleID, bin_name, CTX_R, CZA_R, TZP_R, id_gene, gene_ref_pcm_predict, gene_ref_id_.subject.),
+    by = c("DRUG_COMPLEX", "DAV", "SUBJID", "DAY", "sampleID", "bin_name")
+  ) %>% 
+  dplyr::filter(!is.na(id_gene)) #%>% 
+  # pull(id_tax_species) %>% unique() %>% sort()
+```
+
+
+
+```{r}
+# df_aaa %>% 
+#   dplyr::filter(SUBJID == 10003) %>% 
+#   dplyr::filter(DAY == 1) %>% 
+#   # pivot_longer(cols = c("id_gene", "id_tax_species"), names_to = "id_gene_species", values_to = "stratum") %>% 
+#   # ggalluvial::is_alluvia_form( weight = "bin_RelAbun")
+#   
+#   ggplot( aes(x = id_gene_species, stratum = stratum, y=bin_RelAbun, label=stratum)) +
+# 
+#   # ggplot( aes(x = as.factor(DAY), stratum = id_tax_species, alluvium=id_tax_species, y=bin_RelAbun)) +
+#   ggalluvial::geom_alluvium(aes(fill = CTX_R)) +
+#   ggalluvial::geom_stratum() +
+#   # geom_text() +
+#   theme_bla
+# 
+# help('alluvial-data')
+
+# titanic_alluvia <- as.data.frame(Titanic)
+# head(titanic_alluvia)
+# ggalluvial::is_alluvia_form(titanic_alluvia,
+#                 weight = "Freq")
+
+# titanic_long <- ggalluvial::to_lodes_form(data.frame(Titanic),
+#                               key = "Demographic",
+#                               axes = 1:3)
+```
+
+```{r}
+df_aaa %>% 
+  DT::datatable(filter="top")
+  # dplyr::select(DRUG_COMPLEX, DAV, SUBJID, DAY, bin_RelAbun) %>% 
+  # dplyr::filter(DAV == "NODAV") %>% 
+  # dplyr::distinct()
+```
+
+
+
+```{r, fig.height=6, fig.width=14}
+library(ggalluvial)
+str_SUBJID_tmp <- 10067 #10078
+row <- DF_SUBJID_METADA_COMPLEX_DRUG %>% dplyr::filter(SUBJID == str_SUBJID_tmp)
+str_DRUG_COMPLEX_tmp <- row$DRUG_COMPLEX
+str_ACTARMCD_tmp <- row$ACTARMCD
+```
+
+
+```{r, fig.height=8, fig.width=14}
+int_DAY_tmp <- 1
+y_lims <- NULL #c(0, 0.5)
+int_text_fontsize <- 8
+v_break_labels_tmp <- c("Phylum", "Species id", "Gene id", "Gene Class")
+lbl_y <- "Relative Abundance"
+lbl_x <- sprintf("Day %d", int_DAY_tmp)
+# lbl_x <- ""
+lbl_title <- sprintf("%s Subject : %s", str_ACTARMCD_tmp, str_SUBJID_tmp)
+plt_day_1 <- df_aaa %>% 
+  dplyr::filter(SUBJID == str_SUBJID_tmp) %>% 
+  dplyr::filter(DAY == int_DAY_tmp) %>% 
+  ggplot(aes(axis1=bin_tax_phylum, axis2=id_tax_species, axis3=id_gene, axis4=gene_ref_pcm_predict, y=bin_RelAbun)) +
+  ggalluvial::geom_alluvium(aes(fill = CTX_R)) +
+  ggalluvial::geom_stratum(width = 0.5) +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=int_text_fontsize, fontface="bold") +
+  labs(x=lbl_x, y=lbl_y, title = lbl_title) +
+  scale_x_discrete(limits = v_break_labels_tmp) +
+  # scale_y_continuous(name = lbl_y, sec.axis = sec_axis(trans=~.*1, name=lbl_y2, breaks=NULL, labels = NULL)) +
+  coord_cartesian(
+    ylim = y_lims
+  ) +
+  theme_bla +
+  theme(legend.position = "none")
+
+
+########################################################################3
+
+
+int_DAY_tmp <- 6
+
+lbl_y <- "Relative Abundance"
+lbl_x <- sprintf("Day %d", int_DAY_tmp)
+# lbl_x <- ""
+lbl_title <- sprintf("Subject : ")
+plt_day_6 <- df_aaa %>% 
+  dplyr::filter(SUBJID == str_SUBJID_tmp) %>% 
+  dplyr::filter(DAY == int_DAY_tmp) %>% 
+  ggplot(aes(axis1=bin_tax_phylum, axis2=id_tax_species, axis3=id_gene, axis4=gene_ref_pcm_predict, y=bin_RelAbun)) +
+  ggalluvial::geom_alluvium(aes(fill = CTX_R)) +
+  ggalluvial::geom_stratum(width = 0.5) +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=int_text_fontsize, fontface="bold") +
+  labs(x=lbl_x, y=lbl_y) +
+  scale_x_discrete(limits = v_break_labels_tmp) +
+  # scale_y_continuous(name = lbl_y, sec.axis = sec_axis(trans=~.*1, name=lbl_y2, breaks=NULL, labels = NULL)) +
+  coord_cartesian(
+    ylim = y_lims
+  ) +
+  theme_bla +
+  theme(legend.position = "none")
+
+########################################################################
+
+
+int_DAY_tmp <- 37
+
+lbl_y <- "Relative Abundance"
+lbl_x <- sprintf("Day %d", int_DAY_tmp)
+# lbl_x <- ""
+lbl_title <- sprintf("Subject : ")
+plt_day_37 <- df_aaa %>% 
+  dplyr::filter(SUBJID == str_SUBJID_tmp) %>% 
+  dplyr::filter(DAY == int_DAY_tmp) %>% 
+  ggplot(aes(axis1=bin_tax_phylum, axis2=id_tax_species, axis3=id_gene, axis4=gene_ref_pcm_predict, y=bin_RelAbun)) +
+  ggalluvial::geom_alluvium(aes(fill = CTX_R)) +
+  ggalluvial::geom_stratum(width = 0.5) +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=int_text_fontsize, fontface="bold") +
+  labs(x=lbl_x, y=lbl_y) +
+  scale_x_discrete(limits = v_break_labels_tmp) +
+  # scale_y_continuous(name = lbl_y, sec.axis = sec_axis(trans=~.*1, name=lbl_y2, breaks=NULL, labels = NULL)) +
+  coord_cartesian(
+    ylim = y_lims
+  ) +
+  theme_bla +
+  theme(legend.position = "bottom")
+
+```
+
+
+```{r, fig.height=25, fig.width=18}
+nv_yes_no_color <- c("Yes"= "#e31a1c", "No"="#1f78b4")
+theme_font_size <- theme(
+  axis.text=element_text(size=30),
+  axis.title=element_text(size=30, face="bold"),
+  legend.title=element_text(size=30), 
+  legend.text=element_text(size=30)
+)
+  
+cowplot::plot_grid(
+  plt_day_1  + coord_cartesian(ylim = c(0, 0.07)) + scale_fill_manual(values = nv_yes_no_color)  + theme_font_size,
+  plt_day_6  + coord_cartesian(ylim = c(0, 0.07))  + scale_fill_manual(values = nv_yes_no_color) + theme_font_size,
+  plt_day_37 + coord_cartesian(ylim = c(0, 0.07))  + scale_fill_manual(values = nv_yes_no_color) + theme_font_size,
+  align = 'v',
+  cols = 1,
+  rel_heights = c(1, 1, 1)
+)
+```
+
+
+```{r, fig.height=30, fig.width=16}
+nv_yes_no_color <- c("Yes"= "#e31a1c", "No"="#1f78b4")
+cowplot::plot_grid(
+  plt_day_1 + scale_fill_manual(values = nv_yes_no_color),
+  plt_day_6 + scale_fill_manual(values = nv_yes_no_color),
+  plt_day_37 + scale_fill_manual(values = nv_yes_no_color),
+  align = 'v',
+  cols = 1,
+  rel_heights = c(0.7, 1.15, 1.15)
+)
+```
+
+
+
+```{r}
+# str_SUBJID_tmp <- 10067 #10078
+row <- DF_SUBJID_METADA_COMPLEX_DRUG %>% dplyr::filter(SUBJID == str_SUBJID_tmp)
+str_DRUG_COMPLEX_tmp <- row$DRUG_COMPLEX
+str_ACTARMCD_tmp <- row$ACTARMCD
+
+nv_bin_tax_phylum_color <- c(
+  "Bacteroidota"= "#e41a1c", 
+  "Firmicutes" = "#377eb8",
+  "Firmicutes_A"= "#4daf4a", 
+  "Firmicutes_C"= "#984ea3", 
+  "Proteobacteria"= "#ff7f00", 
+  "Desulfobacterota_I"= "#cab2d6", #"#a65628", 
+  "Unclassified"= "#999999" #"#cab2d6" #"#999999"
+)
+
+
+lbl_x <- "Day"
+lbl_y <- "Relative Abundance"
+lbl_y2 <- "Shannon Index (bits)"
+lbl_title <- sprintf("%s Subject: %d", str_ACTARMCD_tmp, str_SUBJID_tmp)
+dbl_scale_factor <- 0.25
+plt_RelativeAbundance_SUBJID_tmp <- DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL %>% 
+  dplyr::filter(SUBJID == str_SUBJID_tmp) %>% 
+  # pull(bin_tax_phylum) %>% unique() %>% paste0(collapse = "'= 'XXX', '")
+  dplyr::mutate(bin_tax_phylum = ifelse(bin_tax_phylum == "", "Unclassified", bin_tax_phylum)) %>% 
+  ggplot() +
+  geom_bar(aes(x=as.factor(DAY), y=bin_RelAbun, fill=as.factor(bin_tax_phylum)), stat = "identity", width = 0.5) +
+  # geom_point(
+  #   data = DF_SHANNON_bits_SHTGN_w_FINAL_THRESHOLD %>% dplyr::filter(SUBJID == str_SUBJID_tmp),
+  #   aes(x=as.factor(DAY), y = H_bits*dbl_scale_factor),
+  #   color = "black"
+  # ) +
+  # geom_line(
+  #   data = DF_SHANNON_bits_SHTGN_w_FINAL_THRESHOLD %>% dplyr::filter(SUBJID == str_SUBJID_tmp),
+  #   aes(x=as.factor(DAY), y = H_bits*dbl_scale_factor),
+  #   color = "black"
+  # ) +
+  # scale_y_continuous(sec.axis = sec_axis(trans=~./dbl_scale_factor, name=lbl_y2)) + #, breaks=NULL, labels = NULL
+  # labs(x=lbl_x, y=lbl_y, title = lbl_title) +
+  labs(x=lbl_x, y=lbl_y) +
+  guides(fill=guide_legend("Phylum")) +
+  scale_fill_manual(values = nv_bin_tax_phylum_color) +
+  # scale_y_log10() +
+  theme_bla +
+  theme(legend.position = "bottom")
+plt_RelativeAbundance_SUBJID_tmp
+```
+#### Cowplot subject
+
+Total number of expected metagenomes 3 times 120
+```{r}
+3*(DF_TAXA_ABUNDANCE_w_ID %>% pull(SUBJID) %>% unique() %>% length())
+```
+
+```{r}
+DF_TAXA_ABUNDANCE_w_ID %>% 
+  dplyr::select(DRUG_COMPLEX, DAV, SUBJID) %>% 
+  distinct() %>% 
+  group_by(DRUG_COMPLEX) %>% 
+  summarise(n = n() ) %>% 
+  dplyr::mutate(nts=n*3)
+```
+
+
+```{r}
+# 108-94
+DF_TAXA_ABUNDANCE_w_ID %>% 
+  dplyr::select(DRUG_COMPLEX, DAV, SUBJID, DAY, sampleID) %>% 
+  distinct() %>% 
+  group_by(DRUG_COMPLEX) %>% 
+  summarise(n = n() )
+```
+
+
+
+```{r}
+DF_TAXA_ABUNDANCE_w_ID %>% 
+  pull(sampleID) %>% unique() %>% length()
+```
+
+
+```{r}
+DF_TAXA_ABUNDANCE_w_ID %>% 
+  dplyr::select(contains("id_tax_"), contains("bin_tax_")) %>% 
+  distinct() %>% 
+  dplyr::arrange(id_tax_species) %>% 
+  DT::datatable(filter="top")
+```
+
+
+
+```{r}
+DF_BETALACTAMASES_IDS %>% 
+  dplyr::select(id_gene, gene_ref_pcm_predict, gene_ref_id_.subject.) %>% 
+  left_join(
+    BLA_IMPACT_betalactamases_SELECTED %>% 
+      dplyr::select(gene_ref_id_.subject., Phenotype, TZP_R, CTX_R, CZA_R, TZP_MIC, CTX_MIC, CZA_MIC),
+    by = c("gene_ref_id_.subject.")
+  ) %>% 
+  dplyr::rename("Gene id" ="id_gene") %>% 
+  dplyr::rename("Class" = "gene_ref_pcm_predict") %>% 
+  dplyr::rename("Gene Reference" = "gene_ref_id_.subject.") %>% 
+  dplyr::rename("Resistant to.TZP" = "TZP_R") %>% 
+  dplyr::rename("Resistant to.CTX" = "CTX_R") %>% 
+  dplyr::rename("Resistant to.CZA" = "CZA_R") %>% 
+  dplyr::rename("MIC.TZP" = "TZP_MIC") %>% 
+  dplyr::rename("MIC.CTX" = "CTX_MIC") %>% 
+  dplyr::rename("MIC.CZA" = "CZA_MIC") %>% 
+  DT::datatable(filter="top")
+```
+
+
+
+For subject 10067 in CRO NODAV:
+ - the bacterioidota species 25 : Prevotella lascolaii has a preseved resistant gene Candidate_blaa	k141_166749_1	ESBL	No	Yes
+
+```{r, fig.height=24, fig.width=42}
+nv_yes_no_color <- c("Yes"= "#e31a1c", "No"="#1f78b4")
+theme_font_size <- theme(
+  axis.text=element_text(size=30),
+  axis.title=element_text(size=30, face="bold"),
+  legend.title=element_text(size=30), 
+  legend.text=element_text(size=30),
+)
+
+# aaa <- theme(plot.margin=margin(l=-0.8,unit="cm"))
+aaa <- theme(plot.margin=margin(r=0, unit="cm") )
+  
+cowplot::plot_grid(
+  plt_day_1  + coord_cartesian(ylim = c(0, 0.07)) + scale_fill_manual(values = nv_yes_no_color)  + theme_font_size,
+  plt_day_6  + coord_cartesian(ylim = c(0, 0.07))  + scale_fill_manual(values = nv_yes_no_color) + theme_font_size  + aaa,
+  plt_day_37 + coord_cartesian(ylim = c(0, 0.07))  + scale_fill_manual(values = nv_yes_no_color) + theme_font_size,
+  plt_RelativeAbundance_SUBJID_tmp + theme_font_size  + aaa,
+  align = 'vh',
+  cols = 2,
+  rel_heights = c(1, 1, 1, 1),
+  labels = c("a)", "b)", "c)", "d)"),
+  label_size = 34,
+  scale = 1
+)
+
+```
+
+
+```{r}
+df_aaa %>% 
+  dplyr::filter(SUBJID == str_SUBJID_tmp) %>% 
+  dplyr::filter(id_gene %in% c(19, 20)) #%>% 
+  # View()
+
+```
+
+
+
+```{r}
+df_aaa %>% 
+  dplyr::filter(SUBJID == 10118) %>% 
+  # dplyr::filter(DAY == 6) %>% 
+  ggplot(aes(axis1=id_tax_species, axis2=gene_ref_pcm_predict, axis3=id_gene, y=bin_RelAbun)) +
+  ggalluvial::geom_alluvium(aes(fill = CTX_R)) +
+  ggalluvial::geom_stratum() +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  theme_bla
+```
+
+
+
+```{r}
+# data(majors)
+# head(majors)
+# is_lodes_form(majors,
+#               key = "semester", value = "curriculum", id = "student")
+# # curriculum data in alluvia format
+# majors_alluvia <- to_alluvia_form(majors,
+#                                   key = "semester", value = "curriculum",
+#                                   id = "student")
+```
+
+
+
+
+
+## Number of MAGs with beta-lactamases for each antibioitic
+
+we ended up with xx MAGs harbouring a beta-lactamase active against CRO, xx against TZP and xx against CZA (provide a Table ?)
+
+
+```{r}
+DF_RESGENE_BETALACTAMASES_02 <- DF_RESGENE_full_table_final_w_DRUG_RESIST %>% 
+  # pull(gene_ref_id_.subject.) %>% unique() %>% length()
+  left_join(
+    DF_TAXA_ABUNDANCE_w_ID_THRESH_FINAL,
+    by = c("ACTARMCD", "sampleID", "SUBJID", "DAY", "bin_name")
+  ) %>% 
+  # colnames()
+  dplyr::select(DRUG_COMPLEX, DAV, SUBJID, DAY, sampleID, bin_name, bin_abundance, bin_RelAbun, gene_ref_pcm_predict, gene_ref_id_.subject., gene_id_.query., CTX_R, CZA_R, TZP_R, Ambler_class, contains("id_tax_"), contains("bin_tax_")) %>% 
+  left_join(
+    DF_BETALACTAMASES_IDS %>% dplyr::select(gene_ref_pcm_predict, gene_ref_id_.subject., id_gene),
+    by = c("gene_ref_pcm_predict", "gene_ref_id_.subject.")
+  )
+```
+
+```{r}
+DF_RESGENE_BETALACTAMASES_02 %>% 
+  write.csv(file = "DF_RESGENE_BETALACTAMASES_02.CSV", row.names = FALSE)
+```
+
+
+
+### By Ambler Class
+
+```{r}
+DF_RESGENE_BETALACTAMASES_02 %>% 
+  dplyr::select(-sampleID, -bin_abundance, -bin_RelAbun, -gene_ref_pcm_predict, -gene_id_.query.) %>% 
+  dplyr::arrange(bin_name) %>% 
+  head()
+```
+
+
+```{r}
+DF_RESGENE_BETALACTAMASES_02 %>% colnames()
+DF_n_MAGs <- DF_RESGENE_BETALACTAMASES_02 %>% 
+  dplyr::select(-sampleID, -bin_abundance, -bin_RelAbun, -gene_ref_pcm_predict, -gene_id_.query.) %>% 
+  dplyr::arrange(bin_name) %>% 
+  head()
+  # dplyr::filter(!is.na(Ambler_class)) %>% 
+  dplyr::select(DRUG_COMPLEX, DAV, DAY, bin_tax_phylum, id_tax_phylum, Ambler_class, CTX_R, CZA_R, TZP_R, bin_name) %>% 
+  
+  dplyr::distinct() %>%
+  group_by(DRUG_COMPLEX, DAV, DAY, bin_tax_phylum, id_tax_phylum, Ambler_class, CTX_R, CZA_R, TZP_R) %>% 
+  summarise(
+    n_MAGs = length(bin_name)
+  ) %>% 
+  ungroup() # %>% 
+  # pull(n_MAGs) %>% sum()
+```
+
+
+```{r}
+# DRUG_COMPLEX, DAV, 
+DF_n_MAGs %>% 
+  dplyr::select(Ambler_class, bin_tax_phylum, id_tax_phylum, contains("_R"), n_MAGs) %>% 
+  group_by(Ambler_class, bin_tax_phylum, id_tax_phylum, CTX_R, CZA_R, TZP_R) %>% 
+  summarise(
+    n_MAGs = sum(n_MAGs)
+  ) %>% 
+  ungroup() %>% 
+  # dplyr::select(-id_tax_phylum) %>% 
+  dplyr::select(-contains("_R")) %>% 
+  group_by(id_tax_phylum, bin_tax_phylum, Ambler_class) %>% 
+  summarise(
+    n_MAGs = sum(n_MAGs)
+  ) %>% 
+  ungroup() %>% 
+  # dplyr::select(-id_tax_phylum) #%>% 
+  pivot_wider(names_from = Ambler_class, values_from = n_MAGs) %>% 
+  dplyr::mutate(bin_tax_phylum = ifelse(bin_tax_phylum == "", "Unclassified", bin_tax_phylum)) %>%
+  # dplyr::mutate(Ambler_class = ifelse(is.na(Ambler_class), "Unknow", Ambler_class)) %>%
+  
+  flextable::flextable() %>% 
+  flextable::theme_zebra() #%>% 
+  # flextable::save_as_html(path = "tablita.html")
+  # flextable::save_as_docx(path = "tablita.docx")
+
+    
+  # flextable::merge_v(j = "bin_tax_phylum")
+```
+
+
+
+
+### Summary By Resistance
+
+
+Summary: we ended up with 
+xx MAGs harbouring a beta-lactamase active against CRO, xx against TZP and xx against CZA (provide a Table ?)
+
+
+```{r}
+DF_RESGENE_BETALACTAMASES_02 %>% 
+  dplyr::select(DAY, bin_name, CTX_R, CZA_R, TZP_R) %>% 
+  dplyr::mutate(CTX_R = str_replace(CTX_R, "A_", "")) %>% 
+  dplyr::mutate(CZA_R = str_replace(CZA_R, "A_", "")) %>% 
+  dplyr::mutate(TZP_R = str_replace(TZP_R, "A_", "")) %>% 
+  pivot_longer(cols=c("CTX_R", "CZA_R", "TZP_R"), values_to = "Resist", names_to = "Resist_to") %>% 
+  dplyr::distinct() %>% 
+  group_by(DAY, Resist_to, Resist) %>% 
+  summarise(n_MAGs = length(bin_name)) %>% 
+  ungroup() %>% 
+  pivot_wider(names_from = Resist, values_from = n_MAGs) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra() #%>% 
+  # flextable::save_as_html(path="tablita.html")
+
+```
+
+
+```{r}
+DF_RESGENE_BETALACTAMASES_02 %>% 
+  dplyr::select(DAY, bin_name, CTX_R, CZA_R, TZP_R) %>% 
+  dplyr::mutate(CTX_R = str_replace(CTX_R, "A_", "")) %>% 
+  dplyr::mutate(CZA_R = str_replace(CZA_R, "A_", "")) %>% 
+  dplyr::mutate(TZP_R = str_replace(TZP_R, "A_", "")) %>% 
+  pivot_longer(cols=c("CTX_R", "CZA_R", "TZP_R"), values_to = "Resist", names_to = "Resist_to") %>% 
+  dplyr::distinct() %>% 
+  group_by(DAY, Resist_to, Resist) %>% 
+  summarise(n_MAGs = length(bin_name)) %>% 
+  ungroup() %>% 
+  pivot_wider(names_from = c("Resist", "DAY"), values_from = n_MAGs, names_sep = ".") %>% 
+  dplyr::rename("Antibiotic" = "Resist_to") %>% 
+  dplyr::select(Antibiotic, contains("Yes."), contains("No."), contains("NA.")) %>% 
+  flextable::flextable() %>% 
+  flextable::theme_zebra() %>% 
+  flextable::separate_header(opts=c("center-hspan", "span-top"), split = "[.]") %>% 
+  flextable::save_as_html(path="tablita03.html")
+```
+
+
+
+```{r}
+DF_n_MAGs <- DF_RESGENE_BETALACTAMASES_02 %>% 
+  # dplyr::filter(!is.na(Ambler_class)) %>% 
+  dplyr::select(DRUG_COMPLEX, DAV, DAY, bin_tax_phylum, id_tax_phylum, Ambler_class, CTX_R, CZA_R, TZP_R, bin_name) %>% 
+  dplyr::distinct() %>% 
+  group_by(DRUG_COMPLEX, DAV, DAY, bin_tax_phylum, id_tax_phylum, Ambler_class, CTX_R, CZA_R, TZP_R) %>% 
+  summarise(
+    n_MAGs = length(bin_name)
+  ) %>% 
+  ungroup()
+
+
+# DF_n_MAGs %>% 
+  
+```
+
+
+```{r}
+# DRUG_COMPLEX, DAV, 
+DF_n_MAGs %>% 
+  dplyr::select(Ambler_class, bin_tax_phylum, id_tax_phylum, contains("_R"), n_MAGs) %>% 
+  group_by(Ambler_class, bin_tax_phylum, id_tax_phylum, CTX_R, CZA_R, TZP_R) %>% 
+  summarise(
+    n_MAGs = sum(n_MAGs)
+  ) %>% 
+  ungroup() %>% 
+  # dplyr::select(-id_tax_phylum) %>% 
+  dplyr::select(-contains("_R")) %>% 
+  group_by(id_tax_phylum, bin_tax_phylum, Ambler_class) %>% 
+  summarise(
+    n_MAGs = sum(n_MAGs)
+  ) %>% 
+  ungroup() %>% 
+  # dplyr::select(-id_tax_phylum) #%>% 
+  pivot_wider(names_from = Ambler_class, values_from = n_MAGs) %>% 
+  dplyr::mutate(bin_tax_phylum = ifelse(bin_tax_phylum == "", "Unclassified", bin_tax_phylum)) %>%
+  # dplyr::mutate(Ambler_class = ifelse(is.na(Ambler_class), "Unknow", Ambler_class)) %>%
+  flextable::flextable() %>% 
+  flextable::theme_zebra() #%>% 
+  # flextable::save_as_html(path = "tablita.html")
+  # flextable::save_as_docx(path = "tablita.docx")
+
+    
+  # flextable::merge_v(j = "bin_tax_phylum")
+```
+
+
+```{r}
+# write.csv(DF_RESGENE_BETALACTAMASES_DAYZ_6_37, file="DF_RESGENE_BETALACTAMASES_DAYZ_6_37.CSV" , row.names = FALSE)
+```
+
+
+```{r}
+DF_RESGENE_BETALACTAMASES_DAYZ_6_37 %>% 
+  # dplyr::mutate(TZP_R = factor(TZP_R, levels = v_Resistance_levels)) %>% 
+  dplyr::select(DRUG_COMPLEX, DAV, SUBJID, id_gene, DAY, contains("bin_RelAbun"), contains("bin_abundance"), CTX_R, CZA_R, TZP_R, gene_ref_pcm_predict, bin_name) %>% 
+  pivot_longer(cols=c("CTX_R", "CZA_R", "TZP_R"), values_to = "Resist", names_to = "Resist_to") %>% 
+  dplyr::mutate(Resist_to = str_replace_all(Resist_to, "_R", "")) %>% 
+  dplyr::mutate(Resist = factor(Resist, levels = v_Resistance_levels)) %>% 
+  dplyr::mutate(increase_factor = ifelse( is.na(bin_RelAbun_baseline) , Inf, bin_RelAbun/bin_RelAbun_baseline ) ) %>% 
+  dplyr::select(-id_gene, -bin_RelAbun, -bin_RelAbun_baseline, -bin_abundance, -bin_abundance_baseline) %>% 
+  dplyr::mutate(b_increase = increase_factor > 1) %>% 
+  # group_by(DRUG_COMPLEX, DAV, DAY, Resist_to, Resist, b_increase) %>% 
+  group_by(DAY, Resist_to, Resist, b_increase) %>% 
+  summarise(
+    n_MAGs = length(bin_name)
+  ) %>% 
+  ungroup() %>% 
+  group_by(DAY, Resist_to, Resist) %>% 
+  summarise(
+    n_MAGS.increased = sum(n_MAGs[b_increase]),
+    n_MAGS.total = sum(n_MAGs)
+  ) %>% 
+  dplyr::rename("Antibiotic" = "Resist_to") 
+  
+  # dplyr::select(DRUG_COMPLEX, DAV, SUBJID, bin_name )
+  # colnames()
+```
+
+
+
+```{r}
+DF_n_MAGs <- DF_RESGENE_BETALACTAMASES_DAYZ_6_37 %>% 
+  # dplyr::filter(!is.na(Ambler_class)) %>% 
+  dplyr::select(DRUG_COMPLEX, DAV, DAY, bin_tax_phylum, id_tax_phylum, Ambler_class, CTX_R, CZA_R, TZP_R, bin_name) %>% 
+  dplyr::distinct() %>% 
+  group_by(DRUG_COMPLEX, DAV, DAY, bin_tax_phylum, id_tax_phylum, Ambler_class, CTX_R, CZA_R, TZP_R) %>% 
+  summarise(
+    n_MAGs = length(bin_name)
+  ) %>% 
+  ungroup()
+```
+
+
+
+
+```{r}
+DF_RESGENE_BETALACTAMASES_DAYZ_6_37 %>% 
+  # dplyr::mutate(TZP_R = factor(TZP_R, levels = v_Resistance_levels)) %>% 
+  dplyr::select(DRUG_COMPLEX, DAV, SUBJID, id_gene, DAY, contains("bin_RelAbun"), contains("bin_abundance"), CTX_R, CZA_R, TZP_R, gene_ref_pcm_predict, bin_name) %>% 
+  # dplyr::distinct()
+  pivot_longer(cols=c("CTX_R", "CZA_R", "TZP_R"), values_to = "Resist", names_to = "Resist_to") %>% 
+  dplyr::mutate(Resist_to = str_replace_all(Resist_to, "_R", "")) %>% 
+  dplyr::mutate(Resist = factor(Resist, levels = v_Resistance_levels)) %>% 
+  dplyr::mutate(increase_factor = ifelse( is.na(bin_RelAbun_baseline) , Inf, bin_RelAbun/bin_RelAbun_baseline ) ) %>% 
+  dplyr::select(-id_gene, -bin_RelAbun, -bin_RelAbun_baseline, -bin_abundance, -bin_abundance_baseline) %>% 
+  dplyr::mutate(b_increase = increase_factor > 1) %>% 
+  # group_by(DRUG_COMPLEX, DAV, DAY, Resist_to, Resist, b_increase) %>% 
+  group_by(DAY, Resist_to, Resist, b_increase) %>% 
+  summarise(
+    n_MAGs = length(bin_name)
+  ) %>% 
+  ungroup() %>% 
+  group_by(DAY, Resist_to, Resist) %>% 
+  summarise(
+    n_MAGS.increased = sum(n_MAGs[b_increase]),
+    n_MAGS.total = sum(n_MAGs)
+  ) %>% 
+  dplyr::rename("Antibiotic" = "Resist_to")
+  
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+# DF_SHANNON_bits_SHTGN_w_FINAL_THRESHOLD %>% 
+#   group_by(DRUG_COMPLEX, DAV) %>% 
+  
+
+  # wilcox.test(H_bits~DAY, data = DF_SHANNON_bits_SHTGN_w_FINAL_THRESHOLD)
+# wilcox.test(H_bits~DAY, data = DF_SHANNON_bits_SHTGN_w_FINAL_THRESHOLD)
+```
+
+
+
+```{r}
+# 
+# get_df_p.values <- function(v_DAY_levels, df_4_mnlx_tmp_TMP, str_AB_code_TMP, str_ORGAN_TMP, int_TIME_TMP){
+#   ppp <- utils::combn(v_strain_levels, 2) #%>% t() #%>% as.data.frame()
+#   v_DAY_1 <- ppp[1, ]
+#   v_DAY_2 <- ppp[2, ]
+# 
+#   v_p.value_tmp <- sapply(
+#   seq_along(v_DAY_1),
+#   function(ii)  get_wilcox_pvalue(v_DAY_1[ii], v_DAY_2[ii], df_4_mnlx_tmp_TMP %>% dplyr::filter(TIME == int_TIME_TMP))
+#   )
+# 
+#   df_p.value <- data.frame(
+#     AB_code = str_AB_code_TMP,
+#     organ = str_ORGAN_TMP,
+#     TIME = int_TIME_TMP,
+#     strain_1 = v_strain_1,
+#     strain_2 = v_strain_2,
+#     p.value = v_p.value_tmp
+#   )
+#   return(df_p.value)
+# }
+# 
+# # get_df_p.values(v_strain_levels, df_4_mnlx_tmp_TMP, str_AB_code_TMP, str_ORGAN_TMP, v_TIME_TMP[3])
+# 
+# df_p.values_Ct <- lapply(v_TIME_TMP, function(x) get_df_p.values(v_DAY_levels, DF_SHANNON_bits_SHTGN_w_FINAL_THRESHOLD, str_AB_code_TMP, str_ORGAN_TMP, x) ) %>%
+#   bind_rows()
+```
+
+
+
+
+
+
+
+```{r, fig.height=8, fig.width=12}
+DF_N_RESIST_SUBJID_w_THRESHOLD %>% 
+  dplyr::filter(
+    bin_completeness_thresh  == bin_completeness_thresh_FINAL,
+    bin_contamination_thresh == bin_contamination_thresh_FINAL
+  ) %>% 
+  ggplot() +
+  geom_boxplot(aes(x=factor(DAY), y=n_TZP_R, group=factor(DAY))) +
+  facet_grid(DRUG_COMPLEX~DAV) +
+  theme_bla
+```
+
+
+```{r}
+DF_TAXA_ABUNDANCE_w_ID %>% 
+  DT::datatable(filter = "top")
+# , v_bin_completeness_thresh[ii], v_bin_contamination_thresh
+```
+
+
+```{r}
+# str_SUBJID_TMP <- "10051"
+
+# DF_TAXA_ABUNDANCE_w_ID_w_RESIST %>% 
+#   dplyr::filter(bin_completeness >= bin_completeness_thresh_FINAL ) %>%
+#   dplyr::filter(bin_contamination <= bin_contamination_thresh_FINAL ) %>% 
+#   dplyr::filter(SUBJID == str_SUBJID_TMP) %>% 
+#   # dplyr::filter(DAY == 6)
+#   dplyr::filter(id_tax_species == 104)
+```
+
+
