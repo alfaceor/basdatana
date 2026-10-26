@@ -19,26 +19,61 @@ Generate an interactive map of france to visualize the evolution of the populati
 # Development
 
 ```{python}
+import json
+import urllib.request
+
+import pandas as pd
 import plotly.express as px
-import json, pandas as pd
 
-with open("regions.geojson") as f:
-    geo = json.load(f)
-
-# df has columns: code, region, population (from INSEE)
-fig = px.choropleth(
-    df,
-    geojson=geo,
-    locations="code",
-    featureidkey="properties.code",   # must match the join key
-    color="population",
-    color_continuous_scale="Blues",
-    hover_name="region",
-    hover_data={"code": False, "population": ":,.0f"},
+# GeoJSON of French regions (simplified), includes overseas regions
+GEOJSON_URL = (
+    "https://raw.githubusercontent.com/gregoiredavid/france-geojson/"
+    "master/regions-version-simplifiee.geojson"
 )
 
+with urllib.request.urlopen(GEOJSON_URL) as response:
+    geojson = json.load(response)
+
+# Approximate data (INSEE, ~2021): code, name, population, area in km²
+data = [
+    ("11", "Île-de-France",            12_270_000, 12_012),
+    ("24", "Centre-Val de Loire",       2_570_000, 39_151),
+    ("27", "Bourgogne-Franche-Comté",   2_810_000, 47_784),
+    ("28", "Normandie",                 3_320_000, 29_906),
+    ("32", "Hauts-de-France",           6_000_000, 31_806),
+    ("44", "Grand Est",                 5_560_000, 57_441),
+    ("52", "Pays de la Loire",          3_850_000, 32_082),
+    ("53", "Bretagne",                  3_370_000, 27_208),
+    ("75", "Nouvelle-Aquitaine",        6_150_000, 84_036),
+    ("76", "Occitanie",                 5_930_000, 72_724),
+    ("84", "Auvergne-Rhône-Alpes",      8_070_000, 69_711),
+    ("93", "Provence-Alpes-Côte d'Azur", 5_100_000, 31_400),
+    ("94", "Corse",                       350_000,  8_680),
+]
+df = pd.DataFrame(data, columns=["code", "region", "population", "area_km2"])
+df["density"] = (df["population"] / df["area_km2"]).round(1)
+
+# Keep only metropolitan regions (drops overseas ones from the GeoJSON)
+metro_codes = set(df["code"])
+geojson["features"] = [
+    f for f in geojson["features"] if f["properties"]["code"] in metro_codes
+]
+
+fig = px.choropleth(
+    df,
+    geojson=geojson,
+    locations="code",
+    featureidkey="properties.code",
+    color="density",
+    hover_name="region",
+    hover_data={"code": False, "population": ":,", "density": ":.1f"},
+    color_continuous_scale="YlOrRd",
+    labels={"density": "Density (inhab./km²)"},
+    title="Population density by region – Metropolitan France",
+)
 fig.update_geos(fitbounds="locations", visible=False)
-fig.update_layout(margin=dict(l=0, r=0, t=0, b=0))
-fig.update_traces(marker_line_width=0.8, marker_line_color="white")
+fig.update_layout(margin=dict(l=0, r=0, t=50, b=0))
+fig.show()
+
 ```
 
