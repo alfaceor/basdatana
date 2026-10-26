@@ -1,0 +1,20 @@
+---
+title: Map example
+format: html
+---
+
+# Objective
+
+Generate an interactive map of france to visualize the evolution of the population density over the year and the economic growth of the region and some others social socio-economical indicators.
+
+# Planning
+
+- Define where to extract information to plot the map, maybe `geo.api.gouv.fr`
+- Define to use R or python to plot the interactive map
+- Define where to extract the information of the population (or population density)
+- Show information as tooltip, make filters to be show in bar plots `geom_col`
+- Look for the possibility of integrate this data with google maps or some other popular map.
+
+
+
+
