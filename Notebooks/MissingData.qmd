@@ -98,19 +98,54 @@ gtsummary::tbl_summary(df_airquality)
 
 ### Simple linear regression
 
+Now we will procedure with a linear regression of the data plotted in @fig-solarROzone
+
 
 ```{r}
-model1  <- lm(Ozone ~ Solar.R + Wind, data=airquality)
+model1  <- lm(Ozone ~ Solar.R, data=df_airquality)
 model1 %>% gtsummary::tbl_regression()
 ```
 
 
+
+
 ```{r}
-ic(airquality) %>% head(5)
+pairs(df_airquality)
+```
+
+
+
+```{r}
+#| label: fig-solarROzone
+#| fig-cap: Black dots show the scatter of non-mising data 
+plt_tmp <- airquality %>% 
+ggplot() +
+geom_point(aes(x=Solar.R, y=Ozone)) +
+labs(x="Solar.R", y="Ozone")+
+theme_ceor
+
+plotly::ggplotly(plt_tmp)
+```
+
+
+```{r}
+summary(model1)
+```
+
+
+As can be seen here there is "42 observations deleted due to missingness", that we can verify it by filtering the missing data as
+
+```{r}
+df_airquality |> dplyr::filter(is.na(Ozone) | is.na(Solar.R))
+```
+or we can do the same filtering using the `mice` package function `ic`
+
+```{r}
+mice::ic(df_airquality)
 ```
 
 ```{r}
-pred <- predict(model1, newdata=ic(df_airquality) %>% head(5))
+pred <- predict(model1, newdata=ic(df_airquality) )
 pred
 ```
 
@@ -148,14 +183,5 @@ plotly::ggplotly(plt_tmp)
 
 
 
-```{r}
-plt_tmp <- airquality %>% 
-ggplot() +
-geom_point(aes(x=Solar.R, y=Ozone, color=Wind)) +
-labs(x="Solar.R", y="Ozone")+
-theme_ceor
-
-plotly::ggplotly(plt_tmp)
-```
 
  
